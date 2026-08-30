@@ -23,19 +23,17 @@
     "url": "/quickstart"
   },
   "navigation": {
-    "global": {
-      "versions": [
-        {
-          "version": "v2.x",
-          "href": "/v2",
-          "default": true
-        },
-        {
-          "version": "v1.x",
-          "href": "/v1"
-        }
-      ]
-    },
+    "versions": [
+      {
+        "version": "v2.x",
+        "href": "/v2",
+        "default": true
+      },
+      {
+        "version": "v1.x",
+        "href": "/v1"
+      }
+    ],
     "groups": [
       {
         "group": "Overview",
