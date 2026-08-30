@@ -10,11 +10,7 @@
   "colors": {
     "primary": "#4f46e5",
     "light": "#818cf8",
-    "dark": "#3730a3",
-    "anchors": {
-      "from": "#4f46e5",
-      "to": "#818cf8"
-    }
+    "dark": "#3730a3"
   },
   "topbarLinks": [
     {
@@ -26,45 +22,47 @@
     "name": "Get Started",
     "url": "/quickstart"
   },
-  "navigation": [
-    {
-      "group": "Overview",
-      "pages": [
-        "introduction",
-        "quickstart",
-        "development"
-      ]
-    },
-    {
-      "group": "How It Works",
-      "pages": [
-        "how-it-works/runtime-interception",
-        "how-it-works/secret-detection",
-        "how-it-works/attack-surfaces"
-      ]
-    },
-    {
-      "group": "Configuration",
-      "pages": [
-        "configuration/envtrap-json",
-        "configuration/channels",
-        "configuration/exclusions"
-      ]
-    },
-    {
-      "group": "Security",
-      "pages": [
-        "security/ai-safe-design",
-        "security/reports"
-      ]
-    },
-    {
-      "group": "CLI Reference",
-      "pages": [
-        "api-reference/endpoint"
-      ]
-    }
-  ],
+  "navigation": {
+    "groups": [
+      {
+        "group": "Overview",
+        "pages": [
+          "introduction",
+          "quickstart",
+          "development"
+        ]
+      },
+      {
+        "group": "How It Works",
+        "pages": [
+          "how-it-works/runtime-interception",
+          "how-it-works/secret-detection",
+          "how-it-works/attack-surfaces"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/envtrap-json",
+          "configuration/channels",
+          "configuration/exclusions"
+        ]
+      },
+      {
+        "group": "Security",
+        "pages": [
+          "security/ai-safe-design",
+          "security/reports"
+        ]
+      },
+      {
+        "group": "CLI Reference",
+        "pages": [
+          "api-reference/endpoint"
+        ]
+      }
+    ]
+  },
   "footerSocials": {
     "github": "https://github.com"
   }
