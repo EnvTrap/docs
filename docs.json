@@ -23,42 +23,98 @@
     "url": "/quickstart"
   },
   "navigation": {
+    "versions": [
+      {
+        "tag": "v2.x",
+        "default": true
+      },
+      {
+        "tag": "v1.x"
+      }
+    ],
     "groups": [
       {
         "group": "Overview",
+        "version": "v2.x",
         "pages": [
-          "introduction",
-          "quickstart",
-          "development"
+          "v2/introduction",
+          "v2/quickstart",
+          "v2/development"
         ]
       },
       {
         "group": "How It Works",
+        "version": "v2.x",
         "pages": [
-          "how-it-works/runtime-interception",
-          "how-it-works/secret-detection",
-          "how-it-works/attack-surfaces"
+          "v2/how-it-works/runtime-interception",
+          "v2/how-it-works/secret-detection",
+          "v2/how-it-works/attack-surfaces"
         ]
       },
       {
         "group": "Configuration",
+        "version": "v2.x",
         "pages": [
-          "configuration/envtrap-json",
-          "configuration/channels",
-          "configuration/exclusions"
+          "v2/configuration/envtrap-json",
+          "v2/configuration/channels",
+          "v2/configuration/exclusions"
         ]
       },
       {
         "group": "Security",
+        "version": "v2.x",
         "pages": [
-          "security/ai-safe-design",
-          "security/reports"
+          "v2/security/ai-safe-design",
+          "v2/security/reports"
         ]
       },
       {
         "group": "CLI Reference",
+        "version": "v2.x",
         "pages": [
-          "api-reference/endpoint"
+          "v2/api-reference/endpoint"
+        ]
+      },
+      {
+        "group": "Overview",
+        "version": "v1.x",
+        "pages": [
+          "v1/introduction",
+          "v1/quickstart",
+          "v1/development"
+        ]
+      },
+      {
+        "group": "How It Works",
+        "version": "v1.x",
+        "pages": [
+          "v1/how-it-works/runtime-interception",
+          "v1/how-it-works/secret-detection",
+          "v1/how-it-works/attack-surfaces"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "version": "v1.x",
+        "pages": [
+          "v1/configuration/envtrap-json",
+          "v1/configuration/channels",
+          "v1/configuration/exclusions"
+        ]
+      },
+      {
+        "group": "Security",
+        "version": "v1.x",
+        "pages": [
+          "v1/security/ai-safe-design",
+          "v1/security/reports"
+        ]
+      },
+      {
+        "group": "CLI Reference",
+        "version": "v1.x",
+        "pages": [
+          "v1/api-reference/endpoint"
         ]
       }
     ]
