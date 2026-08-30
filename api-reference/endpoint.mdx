@@ -1,0 +1,139 @@
+---
+title: "CLI Reference"
+description: "Complete reference for every envtrap command and flag."
+---
+
+## `envtrap run`
+
+The primary command. Spawns your application as a monitored child process.
+
+```bash
+envtrap run [options] <command> [args...]
+```
+
+### Arguments
+
+| Argument | Description |
+|---|---|
+| `<command>` | The executable to run, typically `node` |
+| `[args...]` | Arguments forwarded to the command |
+
+### Options
+
+| Flag | Default | Description |
+|---|---|---|
+| `-e, --env-file <path>` | `.env` | Path to a custom `.env` file to load secrets from (in addition to `process.env`) |
+| `-v, --verbose` | `false` | Enable verbose debug output from the proxy and hook systems |
+| `--no-mitm` | — | Disable the HTTPS MITM proxy entirely (faster startup, no `network` channel scanning) |
+| `--quiet` | `false` | Suppress the startup banner and all per-leak alerts (only the end summary is printed) |
+| `--log-file <path>` | — | Path (relative to CWD or absolute) to append structured JSONL events during the run |
+
+### How envtrap run works
+
+1. Loads `envtrap.json` from CWD (if present) and applies defaults for missing fields
+2. Loads secrets from `process.env` (minus system variable blocklist) and the `.env` file
+3. Starts the in-memory MITM TLS proxy (unless `--no-mitm` or `channels.network: "off"`)
+4. Builds the child process environment: adds `HTTP_PROXY`, `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`, `NODE_OPTIONS` (with `--import hooks.mjs`), and internal envtrap env vars
+5. Spawns the child with `stdio: ['inherit', 'pipe', 'pipe']`
+6. Pipes and scans stdout/stderr in real time
+7. On child exit: prints summary, writes `.envtrap-report.json`, removes system CA
+
+### Examples
+
+**Basic:**
+```bash
+envtrap run node app.js
+```
+
+**Pass arguments through:**
+```bash
+envtrap run node --max-old-space-size=4096 server.js --port 3000
+```
+
+**Custom .env file:**
+```bash
+envtrap run --env-file .env.production node app.js
+```
+
+**Disable MITM proxy (no network scanning):**
+```bash
+envtrap run --no-mitm node app.js
+```
+
+**Quiet mode with JSONL log file:**
+```bash
+envtrap run --quiet --log-file logs/envtrap.jsonl node app.js
+```
+
+**Verbose debug output:**
+```bash
+envtrap run --verbose node app.js
+```
+
+**npm / package.json integration:**
+```json
+{
+  "scripts": {
+    "start": "envtrap run node app.js",
+    "dev":   "envtrap run node --watch app.js"
+  }
+}
+```
+
+---
+
+## `envtrap check`
+
+Validates `envtrap.json` in the current working directory and reports any schema errors.
+
+```bash
+envtrap check
+```
+
+envtrap reads and parses `envtrap.json`, validates every field against the expected schema, and prints a human-readable report.
+
+**Valid configuration:**
+```text
+✅ Configuration is valid.
+```
+
+**Invalid configuration:**
+```text
+Configuration Validation Failed:
+  - [$.channels.network] Invalid mode "fast". Valid modes: block, warn, off
+  - [$.entropy.threshold] Must be a number (e.g. 3.5)
+```
+
+**No config file found:**
+```text
+No envtrap.json configuration file found. Using default settings.
+```
+
+Exit codes:
+- `0` — Config is valid (or no config file exists)
+- `1` — Config file has validation errors
+
+---
+
+## Internal Environment Variables
+
+envtrap passes the following variables to the child process. These are read by `hooks.mjs` and should not be set manually:
+
+| Variable | Content |
+|---|---|
+| `__ENVTRAP_SECRET_NAMES__` | JSON array of registered secret key names |
+| `__ENVTRAP_SECRETS_MAP__` | JSON object mapping key → value for all registered secrets |
+| `__ENVTRAP_CONFIG_MODES__` | JSON object of channel name → mode (e.g. `{"dns":"block"}`) |
+| `__ENVTRAP_PATH_EXCLUSIONS__` | JSON array of path glob patterns from `exclusions.paths` |
+| `__ENVTRAP_ENTROPY_THRESHOLD__` | String number — entropy threshold |
+| `__ENVTRAP_ENTROPY_MIN_LENGTH__` | String number — minimum secret length |
+
+---
+
+## Exit Codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Process exited normally, no `block`-mode detections triggered |
+| `1` | A `block`-mode detection killed the child process, OR the child exited with code 1 |
+| Child's code | If no block occurred, the child's own exit code is forwarded |
