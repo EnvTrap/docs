@@ -1,0 +1,61 @@
+---
+title: "Subprocess Channel"
+description: "How envtrap monitors node:child_process to prevent credential leakage into subprocess environments."
+---
+
+# Subprocess Channel (`child_process`)
+
+* **Default Mode**: `"warn"`
+* **Target**: `node:child_process` API invocations across ESM and CommonJS.
+
+The `child_process` channel monitors subprocess invocations to ensure that malicious dependencies or utility scripts do not pass sensitive environment variables to system binaries (`curl`, `wget`, `bash`, `python`).
+
+---
+
+## Intercepted APIs
+
+`envtrap` wraps the following Node.js subprocess methods:
+* `child_process.spawn` & `spawnSync`
+* `child_process.exec` & `execSync`
+* `child_process.execFile` & `execFileSync`
+* `child_process.fork`
+
+---
+
+## Detection Logic
+
+When an application invokes an intercepted method:
+1. `envtrap` checks if an explicit `options.env` object was provided.
+2. For each key in `options.env`, it checks whether the key exists in the active secret registry and the assigned value matches the secret value.
+3. If a match is found, an alert is raised before the operating system process is forked.
+
+---
+
+## Enforcement Modes
+
+<Tabs>
+  <Tab title="warn (Default)">
+    Writes an alert to `stderr`, logs the incident in `.envtrap-report.json`, and allows the subprocess to execute with inherited options.
+  </Tab>
+  <Tab title="block">
+    Throws a synchronous `Error` immediately before any OS fork occurs:
+    ```text
+    Error: [envtrap] child_process block: env key "STRIPE_SECRET_KEY" passed to child process
+    ```
+  </Tab>
+  <Tab title="off">
+    Disables subprocess environment inspection.
+  </Tab>
+</Tabs>
+
+---
+
+## Configuration Example
+
+```json envtrap.json
+{
+  "channels": {
+    "child_process": "block"
+  }
+}
+```

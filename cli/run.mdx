@@ -1,0 +1,72 @@
+---
+title: "envtrap run"
+description: "Reference for the envtrap run command, arguments, and execution flags."
+---
+
+# `envtrap run`
+
+The primary execution command. Spawns and monitors your application as a supervised child process.
+
+```bash
+envtrap run [options] <command> [args...]
+```
+
+---
+
+## Arguments
+
+| Parameter | Type | Description |
+|:---|:---|:---|
+| `<command>` | `string` | The target command to execute (e.g. `node`, `npm`, `pnpm`). |
+| `[args...]` | `string[]` | Any command-line arguments forwarded directly to the target executable. |
+
+---
+
+## Command Flags
+
+### `-e, --env-file <path>`
+* **Default**: `".env"`
+* **Description**: Path to a custom `.env` file to load secrets from (in addition to the active shell `process.env`).
+
+```bash
+envtrap run --env-file .env.staging node dist/index.js
+```
+
+---
+
+### `-v, --verbose`
+* **Default**: `false`
+* **Description**: Enables verbose debug logging for the MITM TLS proxy server, certificate minting, and runtime hooks.
+
+```bash
+envtrap run --verbose node app.js
+```
+
+---
+
+### `--no-mitm`
+* **Description**: Disables the in-memory MITM TLS proxy server entirely. Useful for tasks that do not make outbound network requests or when maximum startup speed is needed.
+
+```bash
+envtrap run --no-mitm node test.js
+```
+
+---
+
+### `--quiet`
+* **Default**: `false`
+* **Description**: Suppresses the startup banner and real-time per-leak terminal alerts. Grouped summaries and `.envtrap-report.json` are still produced.
+
+```bash
+envtrap run --quiet node app.js
+```
+
+---
+
+### `--log-file <path>`
+* **Default**: `null`
+* **Description**: Appends structured JSONL events in real time to the specified file path.
+
+```bash
+envtrap run --log-file logs/audit.jsonl node app.js
+```

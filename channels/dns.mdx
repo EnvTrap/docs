@@ -1,0 +1,66 @@
+---
+title: "DNS Channel"
+description: "How envtrap intercepts node:dns resolution calls to stop secret leaks and DNS tunneling exfiltration."
+---
+
+# DNS Channel (`dns`)
+
+* **Default Mode**: `"block"`
+* **Target**: Core `node:dns` and `dns.promises` resolution APIs.
+
+The `dns` channel intercepts hostname resolution queries to prevent exfiltration through domain lookups and DNS tunneling.
+
+---
+
+## Intercepted APIs
+
+`envtrap` wraps both callback-style and Promise-style methods:
+* `dns.lookup`
+* `dns.resolve`, `dns.resolve4`, `dns.resolve6`
+* `dns.resolveCname`, `dns.resolveMx`, `dns.resolveTxt`, `dns.resolveSrv`
+* All `dns.promises.*` equivalents
+
+---
+
+## Detection Capabilities
+
+<CardGroup cols={2}>
+  <Card title="Direct Secret In Hostname" icon="key">
+    Checks if the requested hostname contains an active secret value ($\ge 8$ characters). If found, the lookup is blocked before the OS resolver is queried.
+  </Card>
+  <Card title="Shannon Entropy Tunneling" icon="chart-simple">
+    Splits hostnames into individual subdomain labels and computes their Shannon entropy. Subdomains with length $\ge 12$ and entropy $\ge 3.5$ trigger tunneling warnings.
+  </Card>
+</CardGroup>
+
+---
+
+## Enforcement Modes
+
+<Tabs>
+  <Tab title="block (Default)">
+    Throws a synchronous `Error`:
+    ```text
+    Error: DNS resolution blocked by envtrap: potential secret leak in domain name
+    ```
+    The query never reaches external DNS nameservers.
+  </Tab>
+  <Tab title="warn">
+    Logs a warning to standard error, records the incident, and resolves the hostname normally.
+  </Tab>
+  <Tab title="off">
+    Disables DNS query inspection.
+  </Tab>
+</Tabs>
+
+---
+
+## Configuration Example
+
+```json envtrap.json
+{
+  "channels": {
+    "dns": "block"
+  }
+}
+```

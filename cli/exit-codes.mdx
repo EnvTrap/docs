@@ -1,0 +1,43 @@
+---
+title: "Exit Codes & Signals"
+description: "How envtrap handles process exit codes, Unix signals, and error states."
+---
+
+# Exit Codes & Signal Handling
+
+`envtrap` transparently proxies process execution states between the monitored application and the operating system.
+
+---
+
+## Exit Codes
+
+| Exit Code | Condition / Meaning |
+|:---|:---|
+| **`0`** | Child process terminated cleanly with code 0 and no `block` policies were violated. |
+| **`1`** | A `block`-level violation occurred (killing the child), or `envtrap check` failed. |
+| **`N`** | The child application exited with an error code `N` (when no envtrap block policy was triggered). `envtrap` forwards the code untouched. |
+
+---
+
+## Signal Forwarding
+
+`envtrap` intercepts standard POSIX signals and propagates them to the child process:
+
+<CardGroup cols={2}>
+  <Card title="SIGINT (Ctrl+C)" icon="circle-stop">
+    Forwarded to the child process immediately. The parent CLI cleans up the in-memory certificate authority and temp files, prints the run summary, and exits.
+  </Card>
+  <Card title="SIGTERM" icon="triangle-exclamation">
+    Forwarded directly to the child process to enable graceful shutdown handlers in frameworks like Express and NestJS.
+  </Card>
+</CardGroup>
+
+---
+
+## Automatic Resource Cleanup
+
+Upon exit (whether normal, signaled, or blocked), `envtrap` automatically:
+1. Shuts down the in-memory MITM TLS proxy server.
+2. Deletes the temporary public certificate file (`os.tmpdir()/envtrap-ca-*.crt`).
+3. Removes Root CA trust from the system trust store if injected.
+4. Writes `.envtrap-report.json` with the complete incident audit trail.

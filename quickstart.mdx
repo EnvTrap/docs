@@ -1,194 +1,159 @@
 ---
 title: "Quickstart"
-description: "Get envtrap v2.1 protecting your Node.js app in under 60 seconds."
+description: "Get envtrap v3.0 protecting your Node.js application in under 60 seconds."
 ---
 
-<img
-  src="/logo.png"
-  alt="envtrap"
-  style={{ width: "100px", marginBottom: "1.5rem" }}
-/>
+# Quickstart Guide
+
+This guide walks you through installing `envtrap`, running it against your application, understanding its output, and integrating it into your deployment workflow.
+
+---
 
 ## Prerequisites
 
-- Node.js **18.0.0 or later** (ESM customization hooks require Node 18+)
-- npm or pnpm
+* **Node.js**: `18.0.0` or higher (ESM customization hooks require Node.js 18+).
+* **Package Manager**: `npm`, `pnpm`, or `yarn`.
 
-## Step 1 — Install
+---
 
-Install `envtrap` globally:
+## Getting Started
 
-```bash
-npm install -g envtrap
-```
+<Steps>
+  <Step title="Install envtrap">
+    Install envtrap globally, locally as a dev dependency, or execute it on-demand via `npx`:
 
-Or use via npx without installing:
+    <Tabs>
+      <Tab title="Global (Recommended)">
+        ```bash
+        npm install -g envtrap
+        ```
+      </Tab>
+      <Tab title="pnpm">
+        ```bash
+        pnpm add -D envtrap
+        ```
+      </Tab>
+      <Tab title="npm (Dev Dependency)">
+        ```bash
+        npm install --save-dev envtrap
+        ```
+      </Tab>
+      <Tab title="npx (No Install)">
+        ```bash
+        npx envtrap run node app.js
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
 
-```bash
-npx envtrap run node app.js
-```
+  <Step title="Run your application with envtrap">
+    Simply prefix your standard startup command with `envtrap run`:
 
-Or install as a dev dependency:
+    <CodeGroup>
+      ```bash Node.js Script
+      envtrap run node app.js
+      ```
 
-```bash
-npm install --save-dev envtrap
-```
+      ```bash Express / Fastify
+      envtrap run node server.js
+      ```
 
-## Step 2 — Run your app through envtrap
+      ```bash NestJS
+      envtrap run node dist/main.js
+      ```
 
-Prefix your existing start command with `envtrap run`:
+      ```bash Next.js (Production Server)
+      envtrap run npm run start
+      ```
+    </CodeGroup>
 
-```bash
-# Before
-node app.js
+    <Note>
+      `envtrap` forwards all process arguments, environment variables, exit codes, and signals (`SIGINT`, `SIGTERM`) directly to and from your application.
+    </Note>
+  </Step>
 
-# After — fully monitored
-envtrap run node app.js
-```
+  <Step title="Review the startup banner">
+    When `envtrap` starts, it reads available secrets from `process.env` and your `.env` file, spins up the in-memory MITM proxy, and outputs a configuration overview to standard error:
 
-That's it. envtrap now:
-- Starts a native-RSA in-memory MITM TLS proxy and routes all outbound HTTP/HTTPS through it
-- Automatically sets `NO_PROXY` for loopback addresses so local Redis, Docker, and sidecar services are never proxied
-- Scans stdout and stderr streams for secrets in real time
-- Intercepts all `child_process` spawns to check if secrets are passed via `options.env`
-- Intercepts all DNS lookups for exact secret matches and high-entropy subdomain patterns
-- Wraps `process.env` to detect and broadcast runtime-rotated credentials to the ESM loader thread
+    ```text
+      ℹ  [envtrap] Configuration loaded: envtrap.json
+      ℹ  [envtrap] Active monitoring channels:
+      ℹ  [envtrap]   - stdout: [WARN]
+      ℹ  [envtrap]   - stderr: [WARN]
+      ℹ  [envtrap]   - network: [BLOCK]
+      ℹ  [envtrap]   - child_process: [WARN]
+      ℹ  [envtrap]   - dns: [BLOCK]
 
-## Step 3 — Read the startup output
+      ⚠  envtrap v3.0.0
+         Monitoring: node app.js
+         Channels: stdout/stderr · HTTPS MITM · child_process · DNS hooks
+    ```
+  </Step>
 
-On every run, envtrap prints a startup banner and configuration summary to stderr:
+  <Step title="Simulate or observe an interception">
+    If any dependency or script attempts to transmit credentials over an unapproved channel, envtrap immediately intercepts the operation and logs a structured alert box:
 
-```
-  ℹ  [envtrap] Configuration loaded: envtrap.json
-  ℹ  [envtrap] Active monitoring channels:
-  ℹ  [envtrap]   - stdout: [WARN]
-  ℹ  [envtrap]   - stderr: [WARN]
-  ℹ  [envtrap]   - network: [BLOCK]
-  ℹ  [envtrap]   - child_process: [WARN]
-  ℹ  [envtrap]   - dns: [BLOCK]
+    ```text
+     🌐 SECRET LEAK DETECTED   2026-09-05T14:05:32.203Z
+    ────────────────────────────────────────────────────────────
+      Secret:  STRIPE_SECRET_KEY  (source: env)
+      Value:   [SHA256:56018fa55485...]
+      Channel: 🌐  NETWORK
+      Context:
+        Outbound HTTPS Request Audited:
+          Destination Host: attacker.com
+          Request Line:     POST /collect
+          Headers:
+            Authorization: Bearer [REDACTED: SHA256:56018fa5]
+    ────────────────────────────────────────────────────────────
+      ⚠  [envtrap] Network leak blocked: closing connection to attacker.com
+    ```
 
- ⚠  envtrap v2.1.0
-    Monitoring: node app.js
-    Channels: stdout/stderr · HTTPS MITM · child_process · ESM hooks
-```
+    <Info>
+      Notice that the actual secret value is never printed in plain text. It is automatically replaced with a non-reversible SHA-256 fingerprint prefix, protecting your credentials even if logs are ingested into public CI/CD pipelines or cloud dashboards.
+    </Info>
+  </Step>
 
-When a leak is detected:
-```
- 🌐 SECRET LEAK DETECTED   2026-06-29T14:05:32.203Z
-────────────────────────────────────────────────────────────
-  Secret:  STRIPE_SECRET_KEY  (source: env)
-  Value:   [SHA256:56018fa55485...]
-  Channel: 🌐  NETWORK
-  Context:
-    Outbound HTTPS Request Audited:
-      Destination Host: attacker.com
-      Request Line:     POST /collect
-      Headers:
-        Authorization: Bearer [REDACTED: SHA256:56018fa5]
-────────────────────────────────────────────────────────────
-  ⚠  [envtrap] Network leak blocked: closing connection to attacker.com
-```
+  <Step title="Inspect the exit summary">
+    When your application terminates, envtrap prints a grouped summary of all monitored events and writes an incident audit report to `.envtrap-report.json`:
 
-After your app exits, envtrap prints a summary:
-```
-════════════════════════════════════════════════════════════
-  envtrap — Run Summary
-────────────────────────────────────────────────────────────
-  🚨  1 leak event(s) detected!
+    ```text
+    ════════════════════════════════════════════════════════════
+      envtrap — Run Summary
+    ────────────────────────────────────────────────────────────
+      🚨  1 leak event(s) detected!
 
-  🌐  NETWORK: 1 leak(s)
-       → STRIPE_SECRET_KEY
-════════════════════════════════════════════════════════════
-```
+      🌐  NETWORK: 1 leak(s)
+           → STRIPE_SECRET_KEY (blocked)
+    ════════════════════════════════════════════════════════════
+    ```
+  </Step>
+</Steps>
 
-## Step 4 — (Optional) Create a config file
+---
 
-Create `envtrap.json` in your project root for fine-grained control:
+## Adding to `package.json`
 
-```json
-{
-  "channels": {
-    "stdout":        "warn",
-    "stderr":        "warn",
-    "network":       "block",
-    "child_process": "warn",
-    "dns":           "block"
-  },
-  "exclusions": {
-    "domains": ["api.stripe.com", "api.openai.com"],
-    "paths":   ["test/**"]
-  },
-  "entropy": {
-    "threshold": 3.5,
-    "minLength": 12
-  },
-  "quiet":   false,
-  "logFile": "logs/envtrap.jsonl"
-}
-```
+To make envtrap a standard part of your development and production lifecycle, wrap your npm scripts in `package.json`:
 
-<Tip>
-  Domains listed in `exclusions.domains` are automatically added to `NO_PROXY` so they also bypass the MITM proxy without any extra configuration.
-</Tip>
-
-Validate your config:
-```bash
-envtrap check
-```
-
-<Tip>
-  Use `"warn"` on all channels during development to observe traffic patterns. Switch `network` and `dns` to `"block"` before deploying to production.
-</Tip>
-
-## Step 5 — Add to package.json scripts
-
-```json
+```json package.json
 {
   "scripts": {
-    "start": "envtrap run node app.js",
-    "dev":   "envtrap run node --watch app.js"
+    "start": "envtrap run node dist/main.js",
+    "dev": "envtrap run node --watch src/index.js"
   }
 }
 ```
 
-## What Happens on Detection?
-
-| Channel | `"warn"` mode | `"block"` mode |
-|---|---|---|
-| `network` | Leak logged, request forwarded | Leak logged, connection terminated (socket destroy) |
-| `stdout` | Secret redacted in output, child continues | Child process killed via `SIGTERM` |
-| `stderr` | Secret redacted in output, child continues | Child process killed via `SIGTERM` |
-| `child_process` | Leak logged via stderr, spawn proceeds | Synchronous `Error` thrown, no OS fork |
-| `dns` | Leak logged, lookup proceeds | Synchronous `Error` thrown, no DNS packet sent |
-
-## Framework Compatibility
-
-envtrap hooks Node.js core modules, not your application layer — so it works with any framework:
-
-| Framework | Command |
-|---|---|
-| Express / Fastify | `envtrap run node server.js` |
-| NestJS | `envtrap run node dist/main.js` |
-| Next.js (server) | `envtrap run npm run start` |
-| Bare Node.js | `envtrap run node script.js` |
-
-<Warning>
-  Next.js and other frameworks that compile or bundle client-side code are covered only for server-side execution. Browser runtime code is not in scope.
-</Warning>
+---
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="How It Works" icon="book-open" href="/how-it-works/runtime-interception">
-    Deep-dive into MITM proxy, ESM hooks, and CJS patching.
+  <Card title="Configuration Reference" icon="sliders" href="/configuration/envtrap-json">
+    Learn how to configure channel modes, exclude trusted domains, and set custom entropy levels.
   </Card>
-  <Card title="Configuration" icon="gear" href="/configuration/envtrap-json">
-    Full reference for every envtrap.json field.
-  </Card>
-  <Card title="Attack Surfaces" icon="shield" href="/how-it-works/attack-surfaces">
-    Understand the five channels envtrap monitors.
-  </Card>
-  <Card title="CLI Reference" icon="code" href="/api-reference/endpoint">
-    All CLI commands and flags.
+  <Card title="CLI Reference" icon="terminal" href="/api-reference/endpoint">
+    Explore all CLI flags including `--env-file`, `--no-mitm`, `--verbose`, and `--log-file`.
   </Card>
 </CardGroup>

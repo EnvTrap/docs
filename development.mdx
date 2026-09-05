@@ -1,110 +1,112 @@
 ---
-title: "Development Guide"
-description: "Set up the envtrap development environment and contribute to the project."
+title: "Developer & Contributing Guide"
+description: "Setting up the development environment, running unit tests, and understanding the Clean Architecture design."
 ---
 
-## Clone the Repository
+# Developer & Contributing Guide
 
-```bash
-git clone https://github.com/Vishal-770/envtrap.git
-cd envtrap
-```
+Thank you for contributing to `envtrap`! This guide covers local repository setup, building the project, running the test suites, and extending the codebase.
 
-## Install Dependencies
+---
 
-envtrap uses **pnpm** workspace features:
+## Local Setup
 
-```bash
-pnpm install
-```
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/EnvTrap/envtrap-package.git
+    cd envtrap-package
+    ```
+  </Step>
 
-## Project Structure
+  <Step title="Install dependencies">
+    Install development and build dependencies using `pnpm`:
+    ```bash
+    pnpm install
+    ```
+  </Step>
 
-The project is structured as a pnpm monorepo:
+  <Step title="Build TypeScript and hook assets">
+    Compile the TypeScript source files and copy runtime hook assets into `dist/`:
+    ```bash
+    pnpm run build
+    ```
+  </Step>
 
-```text
-envtrap/
-├── package/          # Core envtrap security agent npm package
-│   ├── src/          # TypeScript source code
-│   │   ├── index.ts      # CLI entry point: commander commands, secret loader, child spawner
-│   │   ├── hooks.mjs     # ESM customization hooks & CommonJS Module.prototype.require patch
-│   │   ├── config.ts     # envtrap.json schema validator, loader, and deepMerge logic
-│   │   ├── types.ts      # Shared TypeScript interfaces (Secret, LeakEvent, ScanResult, etc.)
-│   │   ├── ca.ts         # In-memory 2048-bit RSA Root CA (node-forge), OS trust store inject/remove
-│   │   ├── proxy.ts      # MITM TLS HTTP/HTTPS proxy server (127.0.0.1, random port)
-│   │   ├── scanner.ts    # Stateful scan engine: 1MB clamp, 1.5s TTL dedup cache, block routing
-│   │   ├── fingerprint.ts# looksLikeSecret gate, shannonEntropy, scanContent, formatNetworkContext
-│   │   └── reporter.ts   # Terminal output: chalk alerts, run summary, JSONL log writer
-│   └── dist/         # Compiled JS and copied ESM hooks
-├── test-server/      # Integration test suite (Express web app + mock TLS server)
-│   └── test/
-│       └── integration.test.js # Comprehensive test runner
-├── landing-page/     # Next.js product landing page
-└── docs/             # Mintlify documentation (you are here)
-```
+  <Step title="Run unit tests">
+    Run the complete unit test suite using Node's native test runner:
+    ```bash
+    pnpm test
+    ```
+  </Step>
+</Steps>
 
-## Building
+---
 
-To compile the TypeScript package source and copy raw ESM customization hooks to `dist`:
+## Architecture & Codebase Layout
 
-```bash
-cd package
-pnpm run build
-```
+`envtrap` is built strictly according to **Clean Architecture & SOLID principles**, segregating domain logic from Node.js runtime adapters:
 
-## Running Tests
+<CardGroup cols={2}>
+  <Card title="Domain Layer (src/domain)" icon="cube">
+    * `SecretMatcher.ts`: Pure substring matching gated by candidate filters.
+    * `ContentClamp.ts`: Prevents memory exhaustion by limiting scan buffers to 1 MB.
+    * `DedupCache.ts`: TTL-based duplicate alert throttling.
+    * `OutputRedactor.ts`: Hash-based string redaction (`[REDACTED: SHA256:...]`).
+  </Card>
+  <Card title="MITM TLS Engine (src/mitm)" icon="lock">
+    * `CertificateAuthority.ts`: In-memory 2048-bit Root CA generation and per-domain certificate minting.
+    * `MitmServer.ts`: Loopback HTTP server and proxy connection orchestrator.
+    * `ConnectHandler.ts`: HTTPS CONNECT tunnel interception and TLS socket creation.
+    * `TlsInterceptor.ts`: Sliding-window TLS stream scanner.
+  </Card>
+  <Card title="Runtime Hooks (src/hooks)" icon="anchor">
+    * `hooks.mjs`: Node.js ESM customization hooks (`resolve`, `load`, `initialize`).
+    * `virtual/child-process.mjs`: Virtual module wrapping `node:child_process`.
+    * `virtual/dns.mjs`: Virtual module wrapping `node:dns`.
+    * `shared.mjs`: Stack-trace parsing and caller path exclusion matching.
+  </Card>
+  <Card title="CLI & Orchestration (src/cli)" icon="terminal">
+    * `RunCommandBuilder.ts`: Composition root wiring SOLID adapters to ports.
+    * `ChildProcessManager.ts`: Process spawner and standard stream router.
+    * `HookMessageParser.ts`: Decodes out-of-band IPC messages from runtime hooks.
+    * `ChildEnvBuilder.ts`: Sets up child process proxy and CA environment variables.
+  </Card>
+</CardGroup>
 
-Integration tests verify interceptors under real process spawns, CommonJS imports, ESM loader injections, and network MITM proxied connections.
+---
 
-First, ensure the package is built, then run tests in the `test-server` folder:
+## Extending envtrap
 
-```bash
-# Build the agent package
-cd package && pnpm run build
+### Adding a Custom Secret Source
+To load credentials from a custom store (e.g. AWS Secrets Manager, HashiCorp Vault, Doppler):
+1. Implement the `ISecretSource` interface located in `src/ports/ISecretSource.ts`:
+   ```typescript
+   export interface ISecretSource {
+     load(): Promise<Secret[]> | Secret[];
+   }
+   ```
+2. Register your implementation inside `SecretSourceComposer`.
 
-# Run the integration test suite
-cd ../test-server
-pnpm test
-```
+### Adding a Custom Leak Reporter
+To stream leak alerts to a remote observability endpoint (e.g. Datadog, Slack, PagerDuty):
+1. Implement the `ILeakReporter` interface in `src/reporting/ILeakReporter.ts`:
+   ```typescript
+   export interface ILeakReporter {
+     report(event: LeakEvent): void;
+   }
+   ```
+2. Register your reporter with `CompositeReporter` in `RunCommandBuilder.ts`.
 
-## Running the Landing Page Locally
+---
 
-```bash
-cd landing-page
-pnpm dev
-```
+## Running Documentation Locally
 
-The site will be available at `http://localhost:3000`.
-
-## Running the Docs Locally
-
-Install the Mintlify CLI:
-
-```bash
-npm install -g mintlify
-```
-
-Then start the dev server from the `docs/` directory:
+To test documentation updates locally using Mintlify:
 
 ```bash
 cd docs
-mintlify dev
+pnpm exec mintlify dev --port 3333
 ```
 
-The docs will be available at `http://localhost:3000`.
-
-## Architecture Overview
-
-If you want to contribute to the code:
-1. **CLI Commands and Spawner**: Handle flags and set up proxy/hooks environments in `package/src/index.ts`.
-2. **ESM loader/CJS patches**: Any changes to intercepted hooks for `node:dns` or `node:child_process` go in `package/src/hooks.mjs`.
-3. **MITM HTTPS Decryption**: The proxy handling and response blocking go in `package/src/proxy.ts`.
-4. **Secret Scanning**: The candidate filter and entropy logic go in `package/src/fingerprint.ts`.
-
-## Submitting a PR
-
-1. Fork the repository
-2. Create a branch: `git checkout -b feat/my-feature`
-3. Make your changes and add tests in `test-server/test/integration.test.js`
-4. Verify tests pass with `pnpm test`
-5. Submit a pull request with a clear description
+Your local documentation server will be available at `http://localhost:3333`.

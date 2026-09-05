@@ -1,0 +1,60 @@
+---
+title: "Terminal Streams Channel"
+description: "How envtrap scans and redacts secrets from stdout and stderr console streams in real time."
+---
+
+# Terminal Streams Channel (`stdout`, `stderr`)
+
+* **Default Mode**: `"warn"`
+* **Target**: `process.stdout` and `process.stderr` pipes from the child process.
+
+Logging frameworks, crash reporters, and debug statements frequently dump full request payloads or environment objects to terminal streams. The `stdout` and `stderr` channels inspect these streams and redact active secrets.
+
+---
+
+## Real-Time SHA-256 Redaction
+
+When a secret value appears in standard output or error:
+1. `envtrap` replaces the secret value inline with its non-reversible truncated SHA-256 digest:
+   ```text
+   Bearer [REDACTED: SHA256:56018fa5]
+   ```
+2. The redacted stream is forwarded to the parent terminal.
+3. Raw secret values are never printed to the screen or recorded in log files.
+
+---
+
+## Enforcement Modes
+
+<Tabs>
+  <Tab title="warn (Default)">
+    Redacts secrets from the stream output, logs a leak incident, and allows the application process to continue running normally.
+  </Tab>
+  <Tab title="block">
+    Immediately sends `SIGTERM` to the child process upon the first detected leak, terminating execution before further output can be printed.
+  </Tab>
+  <Tab title="off">
+    Disables stream scanning. Output passes through unredacted.
+  </Tab>
+</Tabs>
+
+---
+
+## Child-Level Pre-Redaction (Path Exclusions)
+
+If output originates from a test file or script matching `exclusions.paths`, `hooks.mjs` pre-redacts the string inside the child process to `[REDACTED: PATH_EXCLUDED]`.
+
+Because the parent stream scanner receives an already-sanitized string, no alerts or warnings are raised.
+
+---
+
+## Configuration Example
+
+```json envtrap.json
+{
+  "channels": {
+    "stdout": "warn",
+    "stderr": "warn"
+  }
+}
+```

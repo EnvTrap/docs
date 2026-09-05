@@ -1,0 +1,79 @@
+---
+title: "Runtime Module Hooks"
+description: "How envtrap intercepts node:child_process and node:dns across both ESM and CommonJS modules."
+---
+
+# Runtime Module Hooks
+
+`envtrap` injects a runtime hook script (`hooks.mjs`) into the application process via `NODE_OPTIONS="--import hooks.mjs"`.
+
+This script executes before any user code or dependencies are loaded, establishing hooks for both ECMAScript Modules (ESM) and CommonJS (CJS).
+
+---
+
+## 1. ES Modules (`module.register`)
+
+Node.js 18+ provides module customization hooks that intercept module resolution and loading:
+
+<AccordionGroup>
+  <Accordion title="Module Resolution (resolve hook)">
+    When application code or an npm package imports `node:child_process` or `node:dns`, the `resolve()` hook intercepts the specifier and redirects it to an internal virtual URL protocol:
+    ```javascript
+    export async function resolve(specifier, context, nextResolve) {
+      if (specifier === 'child_process' || specifier === 'node:child_process') {
+        return { url: 'envtrap:child_process', shortCircuit: true };
+      }
+      if (specifier === 'dns' || specifier === 'node:dns') {
+        return { url: 'envtrap:dns', shortCircuit: true };
+      }
+      return nextResolve(specifier, context);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Module Loading (load hook)">
+    When Node.js attempts to load an `envtrap:*` URL, the `load()` hook serves our specialized virtual wrapper module (`src/hooks/virtual/child-process.mjs` or `src/hooks/virtual/dns.mjs`) directly from memory:
+    ```javascript
+    export async function load(url, context, nextLoad) {
+      if (url === 'envtrap:dns') {
+        const source = fs.readFileSync(join(__hooksDir, 'virtual', 'dns.mjs'), 'utf-8')
+          .replaceAll('__HOOKS_SHARED_URL__', sharedUrl);
+        return { format: 'module', shortCircuit: true, source };
+      }
+      return nextLoad(url, context);
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## 2. CommonJS (`Module.prototype.require`)
+
+Because older packages still use CommonJS `require()`, `hooks.mjs` patches `Module.prototype.require` in the main application thread:
+
+```javascript
+const originalRequire = Module.prototype.require;
+
+Module.prototype.require = function (id) {
+  if (id === 'child_process' || id === 'node:child_process') {
+    return wrapChildProcess(originalRequire.call(this, id));
+  }
+  if (id === 'dns' || id === 'node:dns') {
+    return wrapDns(originalRequire.call(this, id));
+  }
+  return originalRequire.call(this, id);
+};
+```
+
+This guarantees that both ESM `import` statements and CommonJS `require()` calls receive identical security enforcement.
+
+---
+
+## 3. Call-Stack Path Exclusions
+
+Before triggering an alert or throwing an error, virtual hooks inspect the execution call stack:
+
+1. An `Error` object is instantiated to capture the active call stack.
+2. The calling file path is evaluated against glob patterns configured in `exclusions.paths`.
+3. If the calling file is excluded (such as test suites or database seeders), the operation is permitted without raising an alert.

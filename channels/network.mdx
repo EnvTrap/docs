@@ -1,0 +1,60 @@
+---
+title: "Network Channel"
+description: "In-depth guide to inspecting and blocking outbound HTTP and HTTPS requests with the network channel."
+---
+
+# Network Channel (`network`)
+
+* **Default Mode**: `"block"`
+* **Target**: All outbound HTTP and HTTPS socket traffic.
+
+The `network` channel inspects all external web traffic originating from your application process and its dependencies.
+
+---
+
+## What Is Audited
+
+* **Request Line & Path**: URL path, query strings (e.g. `GET /api?token=sk_live_...`).
+* **Request Headers**: All HTTP headers, including `Authorization`, `Cookie`, `X-Api-Key`, and custom telemetry headers.
+* **Request Body**: Up to 1 MB of outbound payload data per connection.
+
+---
+
+## Enforcement Modes
+
+<Tabs>
+  <Tab title="block (Default)">
+    * **Plain HTTP**: Responds with an immediate `403 Forbidden` response.
+    * **HTTPS CONNECT**: The TLS socket is severed and destroyed immediately before any data reaches the external network.
+    * An alert is printed to standard error and recorded in `.envtrap-report.json`.
+  </Tab>
+  <Tab title="warn">
+    * An alert is printed and recorded.
+    * The request is forwarded to the real upstream destination server without blocking execution.
+  </Tab>
+  <Tab title="off">
+    * Bypasses proxy inspection entirely.
+  </Tab>
+</Tabs>
+
+---
+
+## Configuration Example
+
+```json envtrap.json
+{
+  "channels": {
+    "network": "block"
+  },
+  "exclusions": {
+    "domains": [
+      "api.stripe.com",
+      "api.openai.com"
+    ]
+  }
+}
+```
+
+<Tip>
+  Domains listed under `exclusions.domains` are automatically added to `NO_PROXY`. They bypass proxy decryption entirely.
+</Tip>

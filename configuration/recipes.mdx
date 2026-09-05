@@ -1,0 +1,87 @@
+---
+title: "Configuration Recipes"
+description: "Battle-tested configuration templates for production, local development, and CI/CD pipelines."
+---
+
+# Configuration Recipes & Templates
+
+Here are pre-configured `envtrap.json` templates designed for different deployment environments.
+
+---
+
+## 1. Production (High Security)
+
+Blocks all unauthorized outbound HTTP/HTTPS traffic, DNS tunneling, and subprocess leaks, while maintaining audit logs for compliance:
+
+```json envtrap.json
+{
+  "channels": {
+    "network":       "block",
+    "dns":           "block",
+    "child_process": "block",
+    "stdout":        "warn",
+    "stderr":        "warn"
+  },
+  "exclusions": {
+    "domains": [
+      "api.stripe.com",
+      "api.openai.com",
+      "api.github.com",
+      "sentry.io"
+    ]
+  },
+  "logFile": "logs/envtrap-production-audit.jsonl"
+}
+```
+
+---
+
+## 2. Local Development (Permissive)
+
+Permits execution across all channels with full visibility, redacting credentials without interrupting developer workflows:
+
+```json envtrap.json
+{
+  "channels": {
+    "network":       "warn",
+    "dns":           "warn",
+    "child_process": "warn",
+    "stdout":        "warn",
+    "stderr":        "warn"
+  },
+  "exclusions": {
+    "paths": [
+      "test/**",
+      "**/__tests__/**",
+      "**/*.spec.ts",
+      "scripts/seed.ts"
+    ]
+  }
+}
+```
+
+---
+
+## 3. Headless CI / Test Runner
+
+Suppresses startup banners and terminal noise while enforcing strict blocking for unit and integration test runs:
+
+```json envtrap.json
+{
+  "channels": {
+    "network":       "block",
+    "dns":           "block",
+    "child_process": "warn",
+    "stdout":        "warn",
+    "stderr":        "warn"
+  },
+  "quiet": true,
+  "exclusions": {
+    "paths": [
+      "test/**",
+      "**/*.test.js"
+    ]
+  },
+  "logFile": ".envtrap-ci.jsonl"
+}
+```

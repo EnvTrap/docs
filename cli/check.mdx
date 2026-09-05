@@ -1,0 +1,53 @@
+---
+title: "envtrap check"
+description: "Validate envtrap.json syntax and configuration rules before deployment."
+---
+
+# `envtrap check`
+
+Validates the `envtrap.json` configuration file in the current working directory.
+
+```bash
+envtrap check
+```
+
+---
+
+## Output Examples
+
+### Valid Configuration
+If the configuration passes all schema rules, `envtrap` exits with code `0`:
+
+```text
+✅ Configuration is valid.
+```
+
+### No Configuration Found
+If no `envtrap.json` is present in the current working directory, `envtrap` notifies that default settings are in effect:
+
+```text
+No envtrap.json found. Using default settings.
+```
+
+### Validation Failure
+If any field contains an invalid type or unrecognized mode, `envtrap` prints JSONPath errors and exits with code `1`:
+
+```text
+Configuration Validation Failed:
+  - [channels.network] Expected 'block', 'warn', or 'off', received 'reject'
+  - [entropy.threshold] Expected number, received 'high'
+```
+
+---
+
+## CI/CD Pre-Commit Hook
+
+Use `envtrap check` in pre-commit hooks or CI test scripts to catch configuration mistakes before merging:
+
+```json package.json
+{
+  "scripts": {
+    "lint:config": "envtrap check"
+  }
+}
+```

@@ -1,0 +1,119 @@
+---
+title: "Framework Guides"
+description: "How to run envtrap with Express, NestJS, Next.js, Fastify, and Docker containers."
+---
+
+# Framework Integration Guides
+
+`envtrap` requires zero code instrumentation and works seamlessly with all major Node.js application frameworks and containerized environments.
+
+---
+
+## Express & Fastify
+
+For traditional HTTP servers, prepend `envtrap run` to your start script:
+
+<Tabs>
+  <Tab title="Express">
+    ```bash
+    envtrap run node server.js
+    ```
+
+    In `package.json`:
+    ```json package.json
+    {
+      "scripts": {
+        "start": "envtrap run node server.js",
+        "dev": "envtrap run node --watch server.js"
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Fastify">
+    ```bash
+    envtrap run node app.js
+    ```
+
+    In `package.json`:
+    ```json package.json
+    {
+      "scripts": {
+        "start": "envtrap run node app.js",
+        "dev": "envtrap run fastify start -w app.js"
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Local database connections (PostgreSQL on `127.0.0.1:5432`, MongoDB on `localhost:27017`) and local Redis instances are automatically excluded from MITM proxy inspection via automated `NO_PROXY` settings.
+</Tip>
+
+---
+
+## NestJS
+
+NestJS applications typically compile TypeScript into a `dist/` folder:
+
+```bash
+envtrap run node dist/main.js
+```
+
+In `package.json`:
+```json package.json
+{
+  "scripts": {
+    "start:prod": "envtrap run node dist/main.js",
+    "start:dev": "envtrap run nest start --watch"
+  }
+}
+```
+
+---
+
+## Next.js
+
+For Next.js production deployments:
+
+```bash
+# Production server
+envtrap run npm run start
+```
+
+In `package.json`:
+```json package.json
+{
+  "scripts": {
+    "start": "envtrap run next start",
+    "dev": "envtrap run next dev"
+  }
+}
+```
+
+---
+
+## Docker & Containerization
+
+When running `envtrap` inside Docker containers, install it globally or keep it as a production dependency:
+
+```dockerfile Dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY package.json pnpm-lock.yaml ./
+RUN npm install -g pnpm envtrap && pnpm install --frozen-lockfile --prod
+
+# Copy application source
+COPY . .
+
+# Run under envtrap monitoring
+EXPOSE 3000
+CMD ["envtrap", "run", "node", "dist/index.js"]
+```
+
+<Note>
+  In containerized environments, internal Kubernetes services or Docker network bridges (e.g. `10.0.0.0/8` or `*.internal`) can be added to `exclusions.domains` in `envtrap.json`.
+</Note>

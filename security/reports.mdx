@@ -1,81 +1,85 @@
 ---
-title: "Security Reports"
-description: "Responsible disclosure policy and how to report security vulnerabilities in envtrap."
+title: "Incident Reports & Auditing"
+description: "Understanding .envtrap-report.json, streaming JSONL audit events, and responsible vulnerability disclosure."
 ---
 
-## Responsible Disclosure
+# Incident Reports & Auditing
 
-The envtrap team takes security vulnerabilities seriously. If you discover a security issue in envtrap itself, please follow responsible disclosure practices.
+`envtrap` provides comprehensive auditing and reporting capabilities to help security teams, developers, and compliance engines inspect credential exposure incidents.
+
+---
+
+## 1. End-of-Run Report (`.envtrap-report.json`)
+
+When an application monitored by `envtrap` terminates, `envtrap` compiles all intercepted leak events and writes a structured JSON file named `.envtrap-report.json` in the current working directory.
+
+### Report Structure
+
+```json .envtrap-report.json
+[
+  {
+    "secretName": "STRIPE_SECRET_KEY",
+    "source": "env",
+    "channel": "network",
+    "context": "Outbound HTTPS Request Audited:\n  Destination Host: attacker-c2.example.com\n  Request Line: POST /collect\n  Headers:\n    Authorization: Bearer [REDACTED: SHA256:56018fa5]",
+    "sha256": "56018fa554859a6898d927a4d4681604a5531d0448ff61168f1c8a14b51a084c",
+    "timestamp": 1788114544924
+  }
+]
+```
+
+### Field Definitions
+
+| Field Name | Type | Description |
+|:---|:---|:---|
+| `secretName` | `string` | The environment variable key name (e.g. `DATABASE_URL`). |
+| `source` | `"env" \| "file"` | Origin of the secret (`"env"` from shell environment, `"file"` from `.env`). |
+| `channel` | `string` | The intercepted egress vector (`"network"`, `"dns"`, `"child_process"`, `"stdout"`, `"stderr"`). |
+| `context` | `string` | A sanitized contextual snippet showing where the secret appeared. Raw secrets are replaced with truncated hashes. |
+| `sha256` | `string` | The 64-character SHA-256 hex digest of the secret value for cross-system correlation. |
+| `timestamp` | `number` | Unix epoch timestamp in milliseconds when the incident occurred. |
+
+---
+
+## 2. Streaming JSONL Event Logs (`--log-file`)
+
+For long-running microservices, production servers, or SIEM pipelines (such as Datadog, Splunk, or Elastic), waiting for process exit is not practical.
+
+Configure `logFile` in `envtrap.json` or pass `--log-file <path>` on the CLI:
+
+```bash
+envtrap run --log-file /var/log/envtrap-events.jsonl node server.js
+```
+
+Each intercepted leak is immediately appended as a single newline-delimited JSON line:
+
+```json
+{"timestamp":1788114544924,"channel":"network","secretName":"STRIPE_SECRET_KEY","sha256":"56018fa5...","action":"block"}
+{"timestamp":1788114545100,"channel":"dns","secretName":"AWS_SECRET_ACCESS_KEY","sha256":"9e107d9d...","action":"warn"}
+```
+
+---
+
+## 3. Vulnerability Reporting & Disclosure
+
+If you discover a security vulnerability or bypass within `envtrap` itself:
 
 <Warning>
-  **Do not open a public GitHub issue for security vulnerabilities.** This could expose the vulnerability to malicious actors before a fix is available.
+  **Do not open a public GitHub issue.** Publicly reporting a security flaw exposes active users before a patch can be deployed.
 </Warning>
 
-## How to Report
+### How to Disclose:
+* **Email**: Send vulnerability details and minimal reproductions to:
+  ```text
+  security@envtrap.dev
+  ```
+* **Include**:
+  1. A clear description of the vulnerability.
+  2. Minimal reproduction steps or proof-of-concept code.
+  3. Affected `envtrap` versions.
+  4. Suggested remediation if available.
 
-Send a detailed vulnerability report to:
-
-```
-security@envtrap.dev
-```
-
-Please include:
-
-1. **Description** — A clear description of the vulnerability
-2. **Impact** — What an attacker could achieve by exploiting this
-3. **Steps to reproduce** — Minimal reproduction steps or a proof-of-concept
-4. **Affected versions** — Which versions of envtrap are affected
-5. **Suggested fix** (optional) — Any ideas you have for a fix
-
-## What to Expect
-
-| Timeline | Action |
-|---|---|
-| **24 hours** | Acknowledgement of your report |
-| **72 hours** | Initial severity assessment |
-| **7–14 days** | Fix developed (for critical/high issues) |
-| **30 days** | Fix released and CVE assigned (if applicable) |
-| **After patch** | Public disclosure coordinated with reporter |
-
-## Scope
-
-The following are **in scope** for security reports:
-
-- envtrap CLI (`envtrap run`, config parsing)
-- Runtime interceptors (https, subprocess, dns, stdout)
-- Secret detection engine (false negatives — secrets that should be caught but aren't)
-- Configuration parsing vulnerabilities
-- Privilege escalation via envtrap's process model
-
-The following are **out of scope**:
-
-- Vulnerabilities in your application code (envtrap protects against these, not from them)
-- Vulnerabilities in npm packages that envtrap depends on (please report to those maintainers)
-- Social engineering
-- Physical access attacks
-
-## Bug Bounty
-
-We currently operate a goodwill-based disclosure program. While we do not offer monetary rewards, we will:
-
-- Credit you in the release notes (unless you prefer anonymity)
-- Add your name to our [Security Hall of Fame](#hall-of-fame)
-- Provide a signed letter of acknowledgement upon request
-
-## Hall of Fame
-
-We thank the following researchers for responsible disclosure:
-
-| Researcher | Issue | Date |
-|---|---|---|
-| *Your name here* | Be the first to report! | — |
-
-## PGP Key
-
-For sensitive reports, you may encrypt your email using our PGP key:
-
-```
------BEGIN PGP PUBLIC KEY BLOCK-----
-[Key will be published with first release]
------END PGP PUBLIC KEY BLOCK-----
-```
+### Disclosure Timeline:
+* **Acknowledgment**: Within 24 hours.
+* **Severity Assessment**: Within 72 hours.
+* **Patch & CVE Assignment**: Within 14–30 days.

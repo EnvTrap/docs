@@ -1,0 +1,57 @@
+---
+title: "Channels Overview"
+description: "Understanding envtrap's five egress monitoring channels and their enforcement modes."
+---
+
+# Channels Overview
+
+A **channel** represents an outbound boundary through which sensitive data can leave your application. `envtrap` monitors five distinct runtime channels.
+
+---
+
+## The 5 Monitored Channels
+
+<CardGroup cols={2}>
+  <Card title="Network (network)" icon="shield-halved" href="/channels/network">
+    Intercepts outbound HTTP/HTTPS traffic through an in-memory loopback MITM proxy.
+  </Card>
+  <Card title="DNS Resolution (dns)" icon="globe" href="/channels/dns">
+    Intercepts core `node:dns` lookup and resolution APIs to block secret queries and tunneling.
+  </Card>
+  <Card title="Subprocess Spawning (child_process)" icon="terminal" href="/channels/child-process">
+    Wraps `spawn`, `exec`, and `fork` to prevent passing credentials via `options.env`.
+  </Card>
+  <Card title="Terminal Output (stdout & stderr)" icon="desktop" href="/channels/stdio">
+    Scans and redacts credentials from `stdout` and `stderr` console streams in real time.
+  </Card>
+</CardGroup>
+
+---
+
+## Enforcement Modes
+
+Each channel can be independently configured in `envtrap.json` with one of three modes:
+
+| Mode | Action on Detection | Process State | Output / Redaction |
+|:---|:---|:---|:---|
+| **`block`** | The operation is actively prevented | Throws Error or terminates process | Socket destroyed / Process killed |
+| **`warn`** | Alert is logged and reported | Execution continues | `[REDACTED: SHA256:...]` |
+| **`off`** | Channel inspection is disabled | Unmonitored | Unchanged |
+
+---
+
+## Default Policies
+
+`envtrap` ships with zero-configuration defaults designed to stop remote exfiltration while maintaining developer visibility:
+
+```json envtrap.json
+{
+  "channels": {
+    "network":       "block",
+    "dns":           "block",
+    "child_process": "warn",
+    "stdout":        "warn",
+    "stderr":        "warn"
+  }
+}
+```

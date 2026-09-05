@@ -1,0 +1,56 @@
+---
+title: "Process Architecture"
+description: "The two-tier process boundary between the envtrap CLI parent and the monitored child application."
+---
+
+# Process Architecture
+
+`envtrap` splits responsibilities across two Node.js process execution boundaries: the **Parent CLI Process** and the **Monitored Child Process**.
+
+This strict separation ensures that security policies, decryption keys, and stream scanners remain isolated from untrusted application dependencies.
+
+---
+
+## Process Boundary Division
+
+<CardGroup cols={2}>
+  <Card title="Parent CLI Process" icon="shield">
+    * **Supervisor**: Spawns and manages the lifetime of your application.
+    * **In-Memory CA**: Generates an ephemeral 2048-bit RSA Root Certificate Authority in RAM.
+    * **MITM Proxy**: Binds an HTTP server to `127.0.0.1` and intercepts outbound HTTP/HTTPS connections.
+    * **Stream Redactor**: Scans child `stdout` and `stderr` streams, replacing secrets with SHA-256 hashes.
+    * **IPC Coordinator**: Receives out-of-band IPC alerts from runtime hooks.
+    * **Incident Reporting**: Writes run summaries and `.envtrap-report.json`.
+  </Card>
+
+  <Card title="Monitored Child Process" icon="code">
+    * **Application Execution**: Runs your code (`node app.js`, Express, NestJS, Next.js).
+    * **Hook Injection**: Loads `hooks.mjs` before user code via `NODE_OPTIONS="--import hooks.mjs"`.
+    * **Virtual Modules**: Intercepts `node:child_process` and `node:dns` imports.
+    * **CJS Monkeypatching**: Proxies CommonJS `require()` calls to intercept legacy modules.
+    * **Runtime Proxy**: Wraps `process.env` in a JavaScript Proxy to catch rotated secrets.
+    * **MessagePort Sync**: Communicates dynamic secret rotations back to the ESM loader thread.
+  </Card>
+</CardGroup>
+
+---
+
+## Inter-Process Communication (IPC)
+
+Because Node.js ESM customization hooks execute in an isolated loader thread and cannot block synchronous code, communicating alerts back to the parent CLI must occur out-of-band.
+
+`envtrap` establishes two communication paths:
+
+<Steps>
+  <Step title="Loader Thread to Main Thread (MessageChannel)">
+    During startup, `hooks.mjs` creates a Node.js `MessageChannel` and transfers one port to the loader thread via `module.register()`. When secrets are added to `process.env` at runtime, the main thread broadcasts updates to the loader thread over this channel.
+  </Step>
+
+  <Step title="Child Process to Parent CLI (Stderr Protocol)">
+    When a virtual hook (such as `node:dns` or `node:child_process`) detects an exfiltration attempt, it writes a structured line to `process.stderr`:
+    ```text
+    [envtrap] DNS leak: secret "STRIPE_SECRET_KEY" found in lookup of: evil.attacker.com
+    ```
+    The parent CLI interceptor parses this line, triggers the configured policy (`block` or `warn`), records the incident, and removes the internal message so user-facing error logs remain clean.
+  </Step>
+</Steps>

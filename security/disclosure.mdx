@@ -1,0 +1,54 @@
+---
+title: "Vulnerability Disclosure"
+description: "How to responsibly disclose security vulnerabilities and bypasses found in envtrap."
+---
+
+# Vulnerability Disclosure Policy
+
+The `envtrap` project takes security seriously. If you discover a security vulnerability or potential bypass within `envtrap`, please follow responsible disclosure practices.
+
+<Warning>
+  **Do not open a public GitHub issue.** Publicly reporting a security flaw exposes active users before a patch can be deployed.
+</Warning>
+
+---
+
+## How to Report
+
+Send a detailed vulnerability report to:
+
+```text
+security@envtrap.dev
+```
+
+### Please Include:
+1. **Description**: A clear description of the vulnerability or bypass.
+2. **Impact**: What an attacker could achieve by exploiting this issue.
+3. **Reproduction Steps**: A minimal reproduction script or proof-of-concept repository.
+4. **Affected Versions**: The specific versions of `envtrap` affected.
+5. **Remediation**: Suggested code patches if available.
+
+---
+
+## Response Timeline
+
+| Phase | Target Timeline |
+|:---|:---|
+| **Acknowledgment** | Within 24 hours |
+| **Initial Assessment & Severity Rating** | Within 72 hours |
+| **Patch Development** | 7–14 business days |
+| **Release & Coordinated Disclosure** | Within 30 calendar days |
+
+---
+
+## Scope
+
+### In-Scope:
+* `envtrap` CLI commands (`envtrap run`, `envtrap check`).
+* Runtime interceptor hooks (`network`, `dns`, `child_process`, `stdout`, `stderr`).
+* In-memory MITM TLS proxy and certificate authority.
+* Secret detection engine (false negatives where secrets should have been caught).
+
+### Out-of-Scope:
+* Vulnerabilities in user application code protected by `envtrap`.
+* Social engineering or physical attacks against developer machines.

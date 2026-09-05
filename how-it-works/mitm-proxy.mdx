@@ -1,0 +1,65 @@
+---
+title: "In-Memory MITM Proxy"
+description: "How envtrap decrypts, inspects, and blocks outbound HTTPS/HTTP traffic using an in-memory TLS proxy."
+---
+
+# In-Memory MITM TLS Proxy
+
+The `network` channel intercepts outbound HTTP and HTTPS egress traffic by running an in-memory loopback proxy.
+
+---
+
+## 1. Ephemeral Root Certificate Authority
+
+Before spawning your application, `envtrap` generates a **2048-bit RSA Root Certificate Authority** in memory:
+
+* **OpenSSL Native Speed**: Uses Node's C++ OpenSSL engine (`crypto.generateKeyPairSync`), creating keys in ~5ms.
+* **RAM Only**: The Root CA private key is never written to disk and is destroyed when `envtrap` exits.
+* **Child Process Trust**: Only the public certificate PEM is written to an ephemeral temp file (`os.tmpdir()/envtrap-ca-*.crt`, file mode `0600`). `NODE_EXTRA_CA_CERTS` is set to this file path, instructing Node's TLS layer to trust proxy certificates.
+* **Collision-Resistant Serials**: Serial numbers use 20 bytes of cryptographically secure randomness (`crypto.randomBytes(20)`), satisfying RFC 5280.
+
+---
+
+## 2. HTTPS CONNECT Handshake Decryption
+
+When the application issues an HTTPS request:
+
+<Steps>
+  <Step title="CONNECT Tunnel Request">
+    The application sends an HTTP `CONNECT target-host:443` request to the local proxy.
+  </Step>
+
+  <Step title="Dynamic Certificate Minting">
+    The proxy inspects the target hostname and dynamically generates an X.509 server certificate signed by our ephemeral Root CA. Certificates are cached in memory per domain for sub-millisecond reuse.
+  </Step>
+
+  <Step title="Local TLS Server Impersonation">
+    The proxy starts an in-memory `tls.Server` socket and responds with `200 Connection Established`. The child completes the TLS handshake with the proxy, trusting it via `NODE_EXTRA_CA_CERTS`.
+  </Step>
+
+  <Step title="Upstream Secure Connection">
+    The proxy creates a real TLS client socket to the true external destination server and begins relaying data bidirectionally.
+  </Step>
+</Steps>
+
+---
+
+## 3. Sliding-Window Buffer Scanning
+
+To inspect streaming network traffic without causing memory bottlenecks:
+
+* **Sliding Window**: Each incoming TCP chunk is scanned alongside a 200-byte overlap window from the previous chunk. This guarantees secrets split across TCP packet boundaries are caught without performing expensive cumulative `Buffer.concat` operations.
+* **1 MB Content Cap**: Payloads exceeding 1 MB are capped to protect the event loop.
+* **Enforcement**: In `block` mode, plain HTTP connections receive a `403 Forbidden` and HTTPS CONNECT tunnels have their sockets destroyed immediately.
+
+---
+
+## 4. Automatic Loopback Bypass (`NO_PROXY`)
+
+To avoid proxying internal microservice communication, `envtrap` automatically injects `NO_PROXY` and `no_proxy` containing:
+
+```text
+localhost,127.0.0.1,::1,0.0.0.0,127.*
+```
+
+Any domains listed in `exclusions.domains` are also appended to `NO_PROXY`. Local databases, Redis caches, and Docker sidecars connect directly without passing through the MITM proxy.

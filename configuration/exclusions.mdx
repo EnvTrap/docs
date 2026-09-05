@@ -1,119 +1,109 @@
 ---
-title: "Exclusions"
-description: "Configure domain allow-lists and path glob exclusions to eliminate false positives without disabling channels."
+title: "Exclusions & Whitelisting"
+description: "Configure trusted domain allowlists and source file glob exclusions to eliminate false positives."
 ---
 
-## Overview
+# Exclusions & Allowlisting
 
-envtrap's detection is aggressive by design. In production, you will almost certainly need to configure exclusions to:
+In production applications, certain outbound operations are legitimate — such as sending your Stripe API key to `api.stripe.com` or printing mock test tokens in unit test suites.
 
-- Allow known-safe API endpoints that legitimately receive your credentials
-- Suppress detections from test files that intentionally use mock secrets
-
-There are two types of exclusion, both configured under `exclusions` in `envtrap.json`.
+`envtrap` provides two powerful exclusion mechanisms in `envtrap.json`:
+1. **Domain Allowlisting** (`exclusions.domains`): Bypasses network proxy inspection for trusted hosts.
+2. **Path Glob Exclusions** (`exclusions.paths`): Suppresses alerts from designated source files or directories.
 
 ---
 
-## Domain Exclusions (`exclusions.domains`)
+## 1. Domain Exclusions (`exclusions.domains`)
 
-**Applies to**: `network` channel only
+* **Applies To**: The `network` channel.
+* **Mechanism**: Exact hostname matching and automatic `NO_PROXY` inclusion.
 
-Domains in this list **bypass all MITM proxy scanning**. Connections to these hosts are forwarded directly without decryption inspection.
+Domains added to `exclusions.domains` are granted direct pass-through status:
+* HTTPS/HTTP requests to these hosts are **not decrypted or scanned**.
+* Hosts are automatically appended to the child process's `NO_PROXY` environment variable, avoiding unnecessary proxy hops.
 
-```json
+```json envtrap.json
 {
   "exclusions": {
     "domains": [
       "api.stripe.com",
       "api.openai.com",
       "api.anthropic.com",
-      "sentry.io",
-      "o123456.ingest.sentry.io",
-      "logs.datadoghq.com"
+      "api.github.com",
+      "o123456.ingest.sentry.io"
     ]
   }
 }
 ```
 
-**Matching is exact hostname comparison** — not a substring match or wildcard. To allow a subdomain, you must list it explicitly.
-
 <Warning>
-  `"api.stripe.com"` does NOT cover `"evil.api.stripe.com"`. Attackers who control a domain like `api.stripe.com.attacker.com` are **still blocked** — envtrap matches the exact `Host` header value.
+  Domain matching is based on **exact hostname verification**. 
+  
+  `"api.stripe.com"` will **not** allow `"evil.api.stripe.com"` or `"api.stripe.com.attacker.com"`. Each unique subdomain must be explicitly enumerated in your configuration.
 </Warning>
 
 ---
 
-## Path Exclusions (`exclusions.paths`)
+## 2. Path Glob Exclusions (`exclusions.paths`)
 
-**Applies to**: `stdout`, `stderr`, `child_process`, and `dns` channels
+* **Applies To**: `stdout`, `stderr`, `child_process`, and `dns`.
+* **Mechanism**: Call stack frame inspection and child-level pre-redaction.
 
-When any of these channels detect a potential leak, envtrap inspects the **call stack** of the intercepted operation to find the originating source file. If that file path matches any glob in `exclusions.paths`, the detection is suppressed.
+When a leak occurs on a local channel, `envtrap` analyzes the originating call stack. If the calling source file matches any glob pattern in `exclusions.paths`, the alert is suppressed.
 
-```json
+```json envtrap.json
 {
   "exclusions": {
     "paths": [
       "test/**",
       "**/__tests__/**",
-      "*.test.js",
-      "*.spec.ts",
-      "scripts/seed.js"
+      "**/*.spec.ts",
+      "**/*.test.js",
+      "scripts/seed.ts"
     ]
   }
 }
 ```
 
-### Glob Matching Rules
+### Glob Matching Syntax:
 
-| Pattern | Matches |
-|---|---|
-| `test/**` | Any file inside a `test/` directory at any depth |
-| `**/__tests__/**` | Any file inside any `__tests__/` directory |
-| `*.test.js` | Any `.test.js` file anywhere in the tree |
-| `/abs/path/file.js` | Only that specific absolute path |
-| `scripts/seed.js` | `scripts/seed.js` at any depth (auto-prefixed with `**/`) |
-
-Patterns that don't start with `/` or `**` are automatically prefixed with `**/` to match anywhere in the path tree.
-
-### How Path Exclusions Work
-
-For `child_process` and `dns` channels, the exclusion check runs **before** the operation is allowed — the call stack is inspected inside `hooks.mjs` using `Error.stack` parsing.
-
-For `stdout` and `stderr` channels, there are two layers:
-1. **Inside the child (hooks.mjs)**: The `process.stdout.write` and `process.stderr.write` overrides check the call stack. If the caller is excluded, the content is pre-redacted to `[REDACTED: PATH_EXCLUDED]` before being written to the pipe.
-2. **In the parent (spawner)**: The pre-redacted content does not match any secret value, so no alert is raised.
+| Pattern | Scope of Match | Example Match |
+|:---|:---|:---|
+| `test/**` | Any file located within a `test/` directory at any hierarchy level | `test/auth.test.js` |
+| `**/__tests__/**` | Any file inside any `__tests__` folder | `src/api/__tests__/user.spec.ts` |
+| `*.test.js` | Any test file matching the suffix anywhere in the codebase | `src/client.test.js` |
+| `/var/app/seed.js` | Exact absolute file path | `/var/app/seed.js` |
 
 <Note>
-  Path exclusions rely on Node.js `Error.stack` parsing. In heavily minified or transpiled code, stack frames may not resolve to meaningful file paths. Test your exclusions with `envtrap run --verbose` to verify they are being applied.
+  Patterns that do not begin with `/` or `**` are automatically prepended with `**/` so they match files anywhere in your project tree.
 </Note>
 
 ---
 
-## Complete Example
+## Combined Production Configuration
 
-```json
+Here is a recommended setup for an Express or Next.js application that integrates with external payment and AI APIs while running automated test suites:
+
+```json envtrap.json
 {
   "channels": {
     "stdout": "warn",
     "stderr": "warn",
     "network": "block",
-    "child_process": "warn",
+    "child_process": "block",
     "dns": "block"
   },
   "exclusions": {
     "domains": [
       "api.stripe.com",
-      "api.openai.com"
+      "api.openai.com",
+      "api.resend.com"
     ],
     "paths": [
       "test/**",
-      "**/__tests__/**",
-      "*.test.js"
+      "**/*.spec.ts"
     ]
   },
-  "entropy": {
-    "threshold": 3.5,
-    "minLength": 12
-  }
+  "logFile": "logs/envtrap-audit.jsonl"
 }
 ```

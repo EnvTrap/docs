@@ -1,0 +1,61 @@
+---
+title: "Live Secret Synchronization"
+description: "How envtrap syncs dynamically-rotated credentials from process.env to the ESM loader thread in real time."
+---
+
+# Live Secret Synchronization
+
+Modern cloud architectures frequently rotate secrets at runtime — such as fetching short-lived database tokens from HashiCorp Vault, AWS Secrets Manager, or handling OAuth token refreshes.
+
+Static analysis and tools that read environment variables only once at process startup miss these rotated credentials.
+
+---
+
+## The Thread Isolation Problem
+
+Node.js ESM customization hooks execute inside an isolated **Worker Thread (the loader thread)**, separate from the main application thread where your code runs:
+
+* **Startup State**: At startup, `process.env` is serialized and passed to the child process.
+* **The Isolation Barrier**: Any subsequent mutations in the application thread (e.g. `process.env.NEW_KEY = "token"`) do **not** automatically sync across thread boundaries to the loader thread.
+
+---
+
+## The Solution: Proxy + MessageChannel
+
+`envtrap` solves this using a two-way synchronization bridge:
+
+<Steps>
+  <Step title="MessagePort Transfer During Initialization">
+    When `hooks.mjs` initializes, a Node.js `MessageChannel` is created. `port2` is transferred to the loader thread via `module.register()`:
+    ```javascript
+    module.register(import.meta.url, {
+      data: { port: port2 },
+      transferList: [port2]
+    });
+    ```
+    The loader thread's `initialize()` hook receives the port and registers a message listener.
+  </Step>
+
+  <Step title="process.env Proxy in Main Thread">
+    In the application thread, `process.env` is wrapped in a JavaScript `Proxy`. Whenever a property is set or modified:
+    ```javascript
+    process.env.VAULT_TOKEN = await fetchVaultSecret();
+    ```
+    The proxy traps the assignment, tests the value against the candidate secret gate (`looksLikeSecret`), and registers it in the local secret registry.
+  </Step>
+
+  <Step title="Instant Broadcast to the Loader Thread">
+    When a valid secret candidate is identified, the main thread posts a message across `port1`:
+    ```javascript
+    port1.postMessage({
+      type: 'secrets_update',
+      secretsMap: updatedMap
+    });
+    ```
+    The loader thread updates its internal matching tables instantly.
+  </Step>
+</Steps>
+
+<Tip>
+  Both `port1` and `port2` invoke `.unref()` so the internal synchronization channels never prevent the Node.js event loop from exiting naturally.
+</Tip>
