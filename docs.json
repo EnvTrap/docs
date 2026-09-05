@@ -32,7 +32,8 @@
             "pages": [
               "introduction",
               "quickstart",
-              "frameworks"
+              "frameworks",
+              "mcp-server"
             ]
           },
           {

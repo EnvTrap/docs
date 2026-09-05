@@ -1,0 +1,120 @@
+---
+title: "MCP Server Integration"
+description: "Connect Cursor, Claude Desktop, Antigravity, and AI agents directly to the EnvTrap Model Context Protocol (MCP) server."
+---
+
+# Model Context Protocol (MCP) Server
+
+`envtrap` hosts an official **Model Context Protocol (MCP)** server directly alongside its documentation.
+
+By connecting your AI coding assistant (such as **Cursor**, **Claude Desktop**, **Antigravity**, or **Windsurf**) to our MCP server, your AI tools can directly search the EnvTrap knowledge base, query architecture guidelines, and generate accurate runtime configurations without hallucinating.
+
+---
+
+## MCP Server Endpoint
+
+```text
+https://envtrap.vercel.app/docs/mcp
+```
+
+* **Protocol Version**: MCP `1.0.0`
+* **Transport**: HTTP / Server-Sent Events (SSE)
+* **Authentication**: None required (public read-only documentation)
+
+---
+
+## Available MCP Tools & Capabilities
+
+When connected, your AI assistant receives specialized tools:
+
+<CardGroup cols={2}>
+  <Card title="search_envtrap" icon="magnifying-glass">
+    Semantically searches across the complete EnvTrap documentation knowledge base, configuration schemas, threat vectors, and API references.
+  </Card>
+  <Card title="query_docs_filesystem_envtrap" icon="folder-tree">
+    Executes read-only queries against a virtualized documentation filesystem to fetch full MDX source files and exact code blocks.
+  </Card>
+</CardGroup>
+
+---
+
+## Setup by Client
+
+<Tabs>
+  <Tab title="Cursor">
+    Add the server to your project's `.cursor/mcp.json` or your global Cursor settings:
+
+    ```json .cursor/mcp.json
+    {
+      "mcpServers": {
+        "envtrap": {
+          "url": "https://envtrap.vercel.app/docs/mcp"
+        }
+      }
+    }
+    ```
+
+    Alternatively:
+    1. Open **Cursor Settings** (`Cmd/Ctrl + ,`) &rarr; **MCP**.
+    2. Click **Add New MCP Server**.
+    3. Set Name to `envtrap` and URL to `https://envtrap.vercel.app/docs/mcp`.
+  </Tab>
+
+  <Tab title="Claude Desktop">
+    Open your `claude_desktop_config.json` file:
+    * **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+    * **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+    Add `envtrap` to `mcpServers`:
+
+    ```json claude_desktop_config.json
+    {
+      "mcpServers": {
+        "envtrap": {
+          "url": "https://envtrap.vercel.app/docs/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Google Antigravity">
+    Add the server to your global Antigravity MCP configuration:
+
+    ```json ~/.gemini/config/mcp_config.json
+    {
+      "mcpServers": {
+        "envtrap": {
+          "serverUrl": "https://envtrap.vercel.app/docs/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Windsurf / Cascade">
+    Add the server to your `~/.codeium/windsurf/mcp_config.json`:
+
+    ```json mcp_config.json
+    {
+      "mcpServers": {
+        "envtrap": {
+          "serverUrl": "https://envtrap.vercel.app/docs/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Verification
+
+Once configured, test the connection by prompting your AI assistant:
+
+```text
+"Search the envtrap docs for how to configure the network channel in envtrap.json"
+```
+
+Your AI assistant will execute the `search_envtrap` tool and provide answers grounded directly in the latest EnvTrap specifications.
