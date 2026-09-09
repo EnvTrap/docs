@@ -154,12 +154,6 @@
             ]
           },
           {
-            "group": "Releases",
-            "pages": [
-              "changelog"
-            ]
-          },
-          {
             "group": "Contributing",
             "pages": [
               "development"
