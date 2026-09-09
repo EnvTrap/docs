@@ -14,8 +14,9 @@ The `network` channel intercepts outbound HTTP and HTTPS egress traffic by runni
 Before spawning your application, `envtrap` generates a **2048-bit RSA Root Certificate Authority** in memory:
 
 * **OpenSSL Native Speed**: Uses Node's C++ OpenSSL engine (`crypto.generateKeyPairSync`), creating keys in ~5ms.
-* **RAM Only**: The Root CA private key is never written to disk and is destroyed when `envtrap` exits.
-* **Child Process Trust**: Only the public certificate PEM is written to an ephemeral temp file (`os.tmpdir()/envtrap-ca-*.crt`, file mode `0600`). `NODE_EXTRA_CA_CERTS` is set to this file path, instructing Node's TLS layer to trust proxy certificates.
+* **RAM Only Private Key**: The Root CA private key is kept strictly in-memory and destroyed when `envtrap` exits.
+* **Child Process Trust & Isolated Workspace**: Public certificate PEM files are stored inside an isolated temporary directory created with `fs.mkdtempSync(path.join(os.tmpdir(), "envtrap-ca-"))` with strict `0o600` permissions. `NODE_EXTRA_CA_CERTS` is pointed to this certificate file.
+* **Automated Process Cleanup**: Ephemeral CA directories and certificate files are automatically removed on process exit as well as via `SIGINT` and `SIGTERM` signal handlers.
 * **Collision-Resistant Serials**: Serial numbers use 20 bytes of cryptographically secure randomness (`crypto.randomBytes(20)`), satisfying RFC 5280.
 
 ---

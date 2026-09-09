@@ -25,6 +25,78 @@
   "navigation": {
     "versions": [
       {
+        "version": "3.1.0",
+        "tag": "Latest",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "frameworks",
+              "mcp-server"
+            ]
+          },
+          {
+            "group": "Core Architecture",
+            "pages": [
+              "how-it-works/architecture",
+              "how-it-works/mitm-proxy",
+              "how-it-works/module-hooks",
+              "how-it-works/secret-detection",
+              "how-it-works/live-sync"
+            ]
+          },
+          {
+            "group": "Monitoring Channels",
+            "pages": [
+              "channels/overview",
+              "channels/network",
+              "channels/dns",
+              "channels/child-process",
+              "channels/stdio"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/envtrap-json",
+              "configuration/exclusions",
+              "configuration/recipes"
+            ]
+          },
+          {
+            "group": "Threat Model & Security",
+            "pages": [
+              "security/threat-vectors",
+              "security/ai-safe-design",
+              "security/reports",
+              "security/disclosure"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/run",
+              "cli/check",
+              "cli/exit-codes"
+            ]
+          },
+          {
+            "group": "Releases",
+            "pages": [
+              "changelog"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "development"
+            ]
+          }
+        ]
+      },
+      {
         "version": "3.0.0",
         "groups": [
           {
@@ -79,6 +151,12 @@
               "cli/run",
               "cli/check",
               "cli/exit-codes"
+            ]
+          },
+          {
+            "group": "Releases",
+            "pages": [
+              "changelog"
             ]
           },
           {

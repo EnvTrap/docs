@@ -25,9 +25,10 @@ The `child_process` channel monitors subprocess invocations to ensure that malic
 ## Detection Logic
 
 When an application invokes an intercepted method:
-1. `envtrap` checks if an explicit `options.env` object was provided.
-2. For each key in `options.env`, it checks whether the key exists in the active secret registry and the assigned value matches the secret value.
-3. If a match is found, an alert is raised before the operating system process is forked.
+1. `envtrap` inspects the environment passed to the child process. If `options.env` is explicitly provided, it inspects that object. If `options.env` is undefined (the default in Node.js subprocesses), `envtrap` evaluates the calling process's `process.env` since the child process inherits it by default.
+2. For each key in the inspected environment, it checks whether the key exists in the active secret registry and the assigned value matches the secret value.
+3. If a match is found, an alert or block is triggered before the operating system process is spawned.
+4. Asynchronous and synchronous method signatures—including `(error, stdout, stderr)` callback handlers on `child_process.exec` and `child_process.execFile`—are strictly preserved with standard error objects and exit status parity.
 
 ---
 

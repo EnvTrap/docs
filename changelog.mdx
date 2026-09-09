@@ -1,0 +1,57 @@
+---
+title: "Changelog"
+description: "Release history and migration guides for envtrap."
+---
+
+# Changelog
+
+All notable changes to `envtrap` are documented in this file.
+
+---
+
+## v3.1.0 (Latest)
+
+*Released September 2026*
+
+Version 3.1.0 introduces significant hardening for production environments, addressing edge cases across child processes, environment credential ingestion, stdio bypass heuristics, ephemeral certificate authority isolation, and cloud provider DNS resolution.
+
+### Highlights
+
+* **Child Process Default Environment Checking**: Hardened the `child_process` hook to inspect credentials against the calling process `process.env` when no explicit `options.env` is provided. Synchronous and asynchronous callbacks are preserved with original signatures and argument parity.
+* **Preservation of Explicit `.env` Secrets**: Secrets explicitly defined in `.env` or configured files are now preserved even if their key matches standard environment variables, while non-sensitive defaults (such as `PORT`, `NODE_ENV`, `DEBUG`) continue to be ignored.
+* **Stdio Stack Bypass & Stream Fast-Path**: Re-architected stdio hooks with an unwrap guard to prevent duplicate wrapping, and added a zero-overhead fast-path that skips deep stack frame inspection when no path-based exclusions are configured or streams contain no match.
+* **Isolated Dynamic CA Workspace**: Switched MITM Certificate Authority key and certificate generation from fixed temp locations to secure, isolated dynamic directories created via `fs.mkdtempSync` with strict `0o600` file permissions and automated cleanup hooks on process exit, `SIGINT`, and `SIGTERM`.
+* **Cloud Provider DNS Allowlist & FQDN Normalization**: Integrated built-in allowlist patterns for major cloud platforms (`*.amazonaws.com`, `*.cloudfront.net`, `*.azure.com`, `*.azurewebsites.net`, `*.mongodb.net`, `*.googleapis.com`, `*.google.com`) and normalized domain lookups by stripping trailing dots (e.g. `example.com.` -> `example.com`).
+
+### Detailed Changes
+
+#### Child Process Hook
+- Fixed callback resolution in `child_process.exec` and `execFile` to guarantee standard `(error, stdout, stderr)` callback invocations when calls are blocked or audited.
+- Inspects `process.env` by default when `options.env` is undefined, preventing subprocess environment leakage.
+
+#### Secret Detection & Configuration
+- Re-architected configuration blocklists so that explicitly provided secrets in `.env` are never discarded even if their key name matches typical non-secret environment variables.
+- Added support for fine-grained secret exclusion patterns and exact-match credentials.
+
+#### Stdio Channel
+- Eliminated performance overhead on heavy console outputs: stdio inspection now short-circuits if path exclusions are absent.
+- Guarded stdout and stderr write streams against double-wrapping or stack-overflow recursion during logging.
+
+#### MITM Proxy
+- Certificate Authority directory is generated per-run in an isolated temporary location with restricted permissions (`0o600`).
+- Process listeners ensure ephemeral CA keys and certs are unlinked on normal exit or abnormal termination signals.
+
+#### DNS Interception
+- Trailing dot FQDN lookups are canonicalized before matching against blocked or allowed rule lists.
+- Built-in recognition for AWS, GCP, Azure, and MongoDB Atlas hostnames to eliminate false positives in standard serverless and container deployments.
+
+---
+
+## v3.0.0
+
+*Initial release of the v3 architecture.*
+
+- **Full-featured MITM proxy** for decrypting, auditing, and blocking HTTPS exfiltration attempts.
+- **Dynamic CJS/ESM module hooks** for Node.js `child_process`, `dns`, and `net` modules.
+- **Stdio interception** for inspecting `stdout` and `stderr` writes in real time.
+- **Configurable entropy analysis** and structured audit reports (`.envtrap-report.json`).

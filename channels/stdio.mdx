@@ -40,11 +40,13 @@ When a secret value appears in standard output or error:
 
 ---
 
-## Child-Level Pre-Redaction (Path Exclusions)
+## Child-Level Pre-Redaction & Fast-Path
 
-If output originates from a test file or script matching `exclusions.paths`, `hooks.mjs` pre-redacts the string inside the child process to `[REDACTED: PATH_EXCLUDED]`.
+If output originates from a test file or script matching `exclusions.paths`, `hooks.mjs` pre-redacts the string inside the child process to `[REDACTED: PATH_EXCLUDED]`. Because the parent stream scanner receives an already-sanitized string, no alerts or warnings are raised.
 
-Because the parent stream scanner receives an already-sanitized string, no alerts or warnings are raised.
+### Zero-Overhead Fast-Path (v3.1)
+* **Stack Inspection Bypass**: In v3.1, stack frame parsing is completely skipped if no `exclusions.paths` are configured in `envtrap.json`, or if the chunk does not contain any registered secret values. This ensures near-zero CPU and latency overhead on high-throughput console logging.
+* **Double-Wrapping Guard**: `process.stdout.write` and `process.stderr.write` hooks include an unwrap guard and recursion flag to prevent multiple wrapping layers or infinite loops when logger libraries wrap streams.
 
 ---
 

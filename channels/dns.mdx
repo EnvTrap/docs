@@ -31,6 +31,12 @@ The `dns` channel intercepts hostname resolution queries to prevent exfiltration
   <Card title="Shannon Entropy Tunneling" icon="chart-simple">
     Splits hostnames into individual subdomain labels and computes their Shannon entropy. Subdomains with length $\ge 12$ and entropy $\ge 3.5$ trigger tunneling warnings.
   </Card>
+  <Card title="Cloud Provider Allowlist" icon="cloud">
+    Recognizes standard cloud infrastructure suffixes (`*.amazonaws.com`, `*.cloudfront.net`, `*.azure.com`, `*.azurewebsites.net`, `*.mongodb.net`, `*.googleapis.com`, `*.google.com`) to prevent false-positive tunneling alerts.
+  </Card>
+  <Card title="FQDN Normalization" icon="globe">
+    Automatically normalizes fully qualified domain names by stripping trailing dots (e.g., `api.stripe.com.` -> `api.stripe.com`) prior to evaluation.
+  </Card>
 </CardGroup>
 
 ---
