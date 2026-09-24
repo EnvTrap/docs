@@ -1,66 +1,104 @@
 ---
 title: "In-Memory MITM Proxy"
-description: "How envtrap decrypts, inspects, and blocks outbound HTTPS/HTTP traffic using an in-memory TLS proxy."
+description: "How envtrap decrypts, inspects, and blocks outbound HTTPS and HTTP egress traffic using an in-memory loopback TLS proxy."
 ---
 
 # In-Memory MITM TLS Proxy
 
-The `network` channel intercepts outbound HTTP and HTTPS egress traffic by running an in-memory loopback proxy.
+The `network` channel inspects all outbound HTTP and HTTPS egress traffic by running an ephemeral, in-memory loopback proxy on `127.0.0.1:<random-port>`.
+
+It is completely air-gapped: no external telemetry or third-party validation servers are contacted. All decryption and scanning happen locally in RAM.
 
 ---
 
-## 1. Ephemeral Root Certificate Authority
+## 1. Ephemeral Root Certificate Authority (CA)
 
-Before spawning your application, `envtrap` generates a **2048-bit RSA Root Certificate Authority** in memory:
+Before spawning your application process, `envtrap` creates a dedicated **2048-bit RSA Root Certificate Authority** in memory:
 
-* **OpenSSL Native Speed**: Uses Node's C++ OpenSSL engine (`crypto.generateKeyPairSync`), creating keys in ~5ms.
-* **RAM Only Private Key**: The Root CA private key is kept strictly in-memory and destroyed when `envtrap` exits.
-* **Child Process Trust & Isolated Workspace**: Public certificate PEM files are stored inside an isolated temporary directory created with `fs.mkdtempSync(path.join(os.tmpdir(), "envtrap-ca-"))` with strict `0o600` permissions. `NODE_EXTRA_CA_CERTS` is pointed to this certificate file.
-* **Automated Process Cleanup**: Ephemeral CA directories and certificate files are automatically removed on process exit as well as via `SIGINT` and `SIGTERM` signal handlers.
-* **Collision-Resistant Serials**: Serial numbers use 20 bytes of cryptographically secure randomness (`crypto.randomBytes(20)`), satisfying RFC 5280.
-
----
-
-## 2. HTTPS CONNECT Handshake Decryption
-
-When the application issues an HTTPS request:
-
-<Steps>
-  <Step title="CONNECT Tunnel Request">
-    The application sends an HTTP `CONNECT target-host:443` request to the local proxy.
-  </Step>
-
-  <Step title="Dynamic Certificate Minting">
-    The proxy inspects the target hostname and dynamically generates an X.509 server certificate signed by our ephemeral Root CA. Certificates are cached in memory per domain for sub-millisecond reuse.
-  </Step>
-
-  <Step title="Local TLS Server Impersonation">
-    The proxy starts an in-memory `tls.Server` socket and responds with `200 Connection Established`. The child completes the TLS handshake with the proxy, trusting it via `NODE_EXTRA_CA_CERTS`.
-  </Step>
-
-  <Step title="Upstream Secure Connection">
-    The proxy creates a real TLS client socket to the true external destination server and begins relaying data bidirectionally.
-  </Step>
-</Steps>
+* **RAM-Only Key Material**: The Root CA private key is generated with Node's native `crypto.generateKeyPairSync` and retained exclusively in RAM. It is **never** written to disk.
+* **Child Process Trust**: The public certificate (`ca.crt`) is written to a temporary folder with restrictive file permissions (`0o600`) in `os.tmpdir()`. `envtrap` points `NODE_EXTRA_CA_CERTS` to this file so Node.js trusts it automatically without modifying system settings.
+* **Optional System CA Trust**: If run with sufficient permissions (e.g. root/admin or on macOS/Windows), `SystemCaTrust` can register the certificate into OS trust stores (`security`, `certutil`, `update-ca-certificates`) to protect non-Node subprocesses like `curl` or Python scripts.
+* **Automated Cleanup**: When the application shuts down or receives `SIGINT`/`SIGTERM`, the temporary CA files and OS trust certificates are purged immediately.
 
 ---
 
-## 3. Sliding-Window Buffer Scanning
+## 2. HTTPS Decryption Flow: The Two-Wire Model
 
-To inspect streaming network traffic without causing memory bottlenecks:
+When your application initiates an HTTPS request (e.g. `fetch("https://api.stripe.com/v1/charges")`), traffic is routed through the proxy via `HTTP_PROXY` and `HTTPS_PROXY`:
 
-* **Sliding Window**: Each incoming TCP chunk is scanned alongside a 200-byte overlap window from the previous chunk. This guarantees secrets split across TCP packet boundaries are caught without performing expensive cumulative `Buffer.concat` operations.
-* **1 MB Content Cap**: Payloads exceeding 1 MB are capped to protect the event loop.
-* **Enforcement**: In `block` mode, plain HTTP connections receive a `403 Forbidden` and HTTPS CONNECT tunnels have their sockets destroyed immediately.
-
----
-
-## 4. Automatic Loopback Bypass (`NO_PROXY`)
-
-To avoid proxying internal microservice communication, `envtrap` automatically injects `NO_PROXY` and `no_proxy` containing:
-
-```text
-localhost,127.0.0.1,::1,0.0.0.0,127.*
+```
+[ Target Application ]               [ envtrap Loopback Proxy ]               [ Real External Server ]
+         |                                       |                                       |
+         | 1. HTTP CONNECT api.stripe.com:443   |                                       |
+         |-------------------------------------->|                                       |
+         | 2. 200 Connection Established         |                                       |
+         |<--------------------------------------|                                       |
+         |                                       |                                       |
+         | 3. Client TLS Handshake               |                                       |
+         |    (EnvTrap sends forged Stripe cert) |                                       |
+         |<=====================================>|                                       |
+         |                                       |                                       |
+         | 4. Encrypted App Payload (Wire #1)    |                                       |
+         |-------------------------------------->|                                       |
+         |                                 [DECRYPT TO PLAINTEXT]                        |
+         |                                 [GATING & OVERLAP SCAN]                       |
+         |                                       |                                       |
+         |                                       | 5. Real Upstream TLS Handshake        |
+         |                                       |<=====================================>|
+         |                                       | 6. Forward verified clean payload     |
+         |                                       |-------------------------------------->|
+         |                                       | 7. Upstream response                  |
+         | 8. Forward response back to app       |<--------------------------------------|
+         |<--------------------------------------|                                       |
 ```
 
-Any domains listed in `exclusions.domains` are also appended to `NO_PROXY`. Local databases, Redis caches, and Docker sidecars connect directly without passing through the MITM proxy.
+### Step-by-Step Breakdown:
+1. **CONNECT Tunneling**: The client asks the proxy to open a raw TCP tunnel to `target-host:443`.
+2. **On-The-Fly Certificate Minting**: `envtrap` dynamically generates an X.509 server certificate for `target-host`, signed by the in-memory Root CA. Domain certificates are cached in memory for sub-millisecond reuse.
+3. **Local Handshake (Wire #1)**: The client performs a TLS handshake with `envtrap`. Because Node was configured with `NODE_EXTRA_CA_CERTS`, the client accepts the forged certificate.
+4. **Decryption & Inspection**: `envtrap` decrypts the incoming TLS packets into plain text to scan headers, URLs, and bodies.
+5. **Upstream Forwarding (Wire #2)**: If clean, `envtrap` opens a genuine, external TLS socket to the real remote host, verifies the real server certificate, and relays the payload.
+
+---
+
+## 3. Streaming Inspection & Security Gating
+
+`TlsInterceptor` protects against packet fragmentation, split-secret bypasses, and protocol deadlocks:
+
+### A. HTTP Header Pre-Buffering & Early Chunk Gating
+HTTP requests often arrive in fragmented TCP packets. If an authorization header containing a secret arrives in Packet 1 and body data in Packet 2, streaming directly upstream would leak the secret before inspection finishes.
+* `envtrap` buffers initial chunks in `headerBuffer` until the end-of-headers delimiter `\r\n\r\n` is matched.
+* The entire header block is scanned. Only once verified as clean is it transmitted upstream.
+
+### B. Dynamic Sliding-Window Overlap
+A secret token may straddle two sequential TCP packets (half in Chunk 1, half in Chunk 2):
+```
+Chunk 1: [ ...Authorization: Bearer sk_live_ABC123 ]
+                                          |
+                                          v (lastOverlap saved)
+Chunk 2:                      [ sk_live_ABC123 ] + [ 456789DEF... ]
+                                       \                /
+Combined Window Scanned:      [ ...Bearer sk_live_ABC123456789DEF... ]  --> DETECTED!
+```
+* **Adaptive Sizing**: The window size is dynamically set to `Math.min(8192, Math.max(200, maxSecretLength))` based on the longest secret in your environment.
+* **Low Memory Footprint**: No need to buffer multi-gigabyte files in RAM; only a tiny sliding overlap is maintained.
+
+### C. Non-HTTP Raw TLS Detection
+Non-HTTP TLS traffic (such as PostgreSQL, Redis, or MQTT over TLS) does not emit HTTP headers (`\r\n\r\n`).
+* `envtrap` sniffs the first 4–10 bytes for standard HTTP verbs (`GET `, `POST `, `PUT `, etc.).
+* If non-HTTP traffic is identified, `envtrap` immediately bypasses HTTP header gating, preventing socket deadlocks.
+
+### D. EOF Verification
+If an attacker or malicious dependency abruptly drops or closes the socket (`tlsSocket.on('end')`), any remaining unflushed bytes in memory are scanned for secrets before the upstream connection is torn down.
+
+---
+
+## 4. Loopback & Domain Exclusions
+
+To avoid intercepting internal microservices or authorized cloud services:
+
+1. **Automatic Loopback Bypass**: `NO_PROXY` is automatically populated with:
+   ```text
+   localhost,127.0.0.1,::1,0.0.0.0,127.*
+   ```
+2. **Domain Exclusions**: Domains specified in `exclusions.domains` (in `envtrap.json`) are automatically appended to `NO_PROXY`. Connections to these hosts bypass the proxy entirely, allowing raw, unmodified native socket speeds.

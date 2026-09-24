@@ -8,15 +8,30 @@ description: "In-depth guide to inspecting and blocking outbound HTTP and HTTPS 
 * **Default Mode**: `"block"`
 * **Target**: All outbound HTTP and HTTPS socket traffic.
 
-The `network` channel inspects all external web traffic originating from your application process and its dependencies.
+The `network` channel intercepts, decrypts, and inspects outbound web traffic originating from your Node.js application process and any third-party dependencies before it reaches the external internet.
+
+---
+
+## How It Works Under The Hood
+
+When `envtrap run` executes:
+1. **Ephemeral Root CA**: `envtrap` spins up a 2048-bit RSA Certificate Authority in RAM. The private key never touches the disk.
+2. **Loopback Proxy**: It starts an in-memory loopback proxy on `127.0.0.1:<random-port>`.
+3. **Environment Injection**: It launches your child application with `HTTP_PROXY`, `HTTPS_PROXY`, and `NODE_EXTRA_CA_CERTS` pointing to the public CA certificate.
+4. **Transparent Decryption**: When the application performs HTTPS requests, the proxy negotiates an HTTP `CONNECT` tunnel, generates an on-the-fly certificate for the requested domain (e.g. `api.stripe.com`) signed by the Root CA, and decrypts the stream locally.
+5. **Two-Stage Inspection**:
+   * **Header Gating**: Initial chunks are buffered until the `\r\n\r\n` boundary is matched and scanned to prevent early header leaks.
+   * **Sliding-Window Streaming**: Streaming bodies are scanned using a dynamic overlap window (`Math.min(8192, Math.max(200, maxSecretLength))`) to catch secrets split across TCP chunk boundaries.
+6. **Upstream Forwarding**: If the payload is clean, the proxy establishes a real TLS connection to the remote destination and forwards the data. If a secret is detected, the socket is immediately severed.
 
 ---
 
 ## What Is Audited
 
-* **Request Line & Path**: URL path, query strings (e.g. `GET /api?token=sk_live_...`).
+* **Request Line & Path**: URL paths, search queries, and route parameters (e.g. `GET /api?key=sk_live_...`).
 * **Request Headers**: All HTTP headers, including `Authorization`, `Cookie`, `X-Api-Key`, and custom telemetry headers.
-* **Request Body**: Up to 1 MB of outbound payload data per connection.
+* **Request Body**: Streaming payloads, JSON request bodies, form submissions, and GraphQL mutations.
+* **Encodings**: Plaintext, Base64, Hexadecimal, URL percent-encoding (`%2F`), and JSON-escaped strings (`\/`).
 
 ---
 
@@ -24,16 +39,16 @@ The `network` channel inspects all external web traffic originating from your ap
 
 <Tabs>
   <Tab title="block (Default)">
-    * **Plain HTTP**: Responds with an immediate `403 Forbidden` response.
-    * **HTTPS CONNECT**: The TLS socket is severed and destroyed immediately before any data reaches the external network.
+    * **Plain HTTP**: Responds with an immediate `HTTP 403 Forbidden` response (`Blocked by envtrap`).
+    * **HTTPS**: The client TLS socket is severed and destroyed immediately (`socket.destroy()`). **Zero bytes are transmitted upstream to the destination server.**
     * An alert is printed to standard error and recorded in `.envtrap-report.json`.
   </Tab>
   <Tab title="warn">
-    * An alert is printed and recorded.
-    * The request is forwarded to the real upstream destination server without blocking execution.
+    * An alert is printed and recorded in the audit report.
+    * The request is forwarded to the real upstream destination server without interrupting execution.
   </Tab>
   <Tab title="off">
-    * Bypasses proxy inspection entirely.
+    * The proxy does not intercept or inspect network traffic.
   </Tab>
 </Tabs>
 
@@ -56,5 +71,13 @@ The `network` channel inspects all external web traffic originating from your ap
 ```
 
 <Tip>
-  Domains listed under `exclusions.domains` are automatically added to `NO_PROXY`. They bypass proxy decryption entirely.
+  Domains listed under `exclusions.domains` are automatically added to `NO_PROXY`. Connections to these hosts bypass the proxy entirely, allowing raw, unmodified native socket speeds.
 </Tip>
+
+---
+
+## Protocol & Streaming Support
+
+* **Streaming Uploads & Large Payloads**: Streaming bodies are inspected on the fly with sub-millisecond overhead using sliding windows. Memory usage is bounded with a 1 MB diagnostic buffer cap.
+* **Non-HTTP Raw TLS Protocols**: Protocols like PostgreSQL, Redis, or MQTT over TLS do not use HTTP header delimiters (`\r\n\r\n`). `envtrap` sniffs the initial bytes for HTTP method prefixes (`GET`, `POST`, etc.); non-HTTP TLS bypasses header buffering to avoid deadlocks.
+* **HTTP/2 & HTTP/3**: Node's forward proxy clients default to HTTP/1.1 over CONNECT tunnels. Native binary-multiplexed HTTP/2 frames and UDP-based HTTP/3 are not intercepted by the loopback proxy.
